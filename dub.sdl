@@ -1,0 +1,8 @@
+name "transduced"
+description "D library implementing clojure-like transducers for Dlang"
+copyright "Copyright © 2016, QAston"
+authors "QAston"
+license "GPL-2.0"
+homepage "https://github.com/QAston/transducers-dlang"
+license "BSD 2-clause"
+targetType "library"

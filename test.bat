@@ -1,0 +1,1 @@
+dub test --build-mode=allAtOnce
