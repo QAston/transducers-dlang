@@ -110,9 +110,13 @@ auto catting(){
 //reduce but with completion call at the end
 //implies reducing fn must have arity-1
 
-auto transduce(alias reducingFn, R, TransducerConstructor, S)(R r, S s, TransducerConstructor t) {
-	auto transducerStack = t.createTransducingStack(reducingFn);//
+// reducing fn alone won't work because it has no arity 1!
+// by default we could wrap regular fn with completed step that just returns
+// note that clojure has IReduce interface which lets a collection implement reduce on it's own
+auto transduce(alias reducingFn, R, Transducer, S)(R r, S s, Transducer t) {
+	auto transducerStack = t.wrap(reducingFn);//
 	auto returnValue = s;// reduce!((, ){} )(r, s); //here in clojure reduced is checked, D doesn't have a mechanism to stop reduce, so we need our own reduce
+	// for now we could just run in a loop to test
 	return transducerStack.completed(returnValue);
 }
 
@@ -131,14 +135,14 @@ auto mapping(alias f)() {
 	// type specialization cannot be done at runtime, so polymorphism needed
 	// or not, if transducing contexts are just parametrized with type, but then it'd generate code for int params:(
 
-	// so mapping should return a struct which applies transducer stack, so that there's less template bloat
-
 	static struct Mapping { // transducer
-		auto wrap(Wrapped)(Wrapped next) {
+		auto wrap(Wrapped)(Wrapped next) { //next is a stackof reducing Structs, at the bottom of which is the transducing process
 			static struct Reducing { // reducing "function"
 				Wrapped next;
+				// this is optional
+				// transducers never implement this
 				auto initialize(){
-					next.initialize();
+					return next.initialize();
 				}
 				auto completed(S seed) {
 					return next.completed(seed);
@@ -151,18 +155,6 @@ auto mapping(alias f)() {
 		}
 	}
 	return Mapping();
-}
-
-struct Conj {
-	auto initialize(){
-		return [];
-	}
-	auto completed(S seed) {
-		return seed;
-	}
-	auto reducing(S, T) (S seed, T elem) {
-		return s;
-	}
 }
 
 
