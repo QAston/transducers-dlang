@@ -30,15 +30,6 @@ import std.range.primitives;
 import std.array;
 import std.traits;
 
-auto foldr(fun, S, R)(S seed, R range) {
-// reduce starting from collection end, using tail recursion
-}
-
-auto compose(R, V) (R range, V value) {
-	// elements added to ranges by defining a new struct (lol)
-	// in D definining anonymous type is the step function (lol again)
-}
-
 auto mapReducing(alias f, S, T)(S seed, T elem) {
 	put(seed,f(elem));
 	return seed;
@@ -58,21 +49,21 @@ auto filterl(alias f, S, R) (ref S s, R r) {
 	return reduce!(filterReducing!(f, S, typeof(r.front)))(s, r);
 }
 
-mixin template ReducingBase(Wrapped) {
-	Wrapped next;
+mixin template ProcessDecoratorMixin(Decorated) {
+	Decorated next;
 	final bool isReduced() @property {
 		return next.isReduced();
 	}
 	final void markReduced() {
 		next.markReduced();
 	}
-	auto completed(ReturnType!(Wrapped.completed) seed) {
+	auto completed(ReturnType!(Decorated.completed) seed) {
 		return next.completed(seed);
 	}
 }
 
 auto catting(){
-	static struct Catting(Wrapped) {
+	static struct Catting(Decorated) {
 	}
 }
 
@@ -88,20 +79,21 @@ auto mapping(alias f)() {
 	// or not, if transducing contexts are just parametrized with type, but then it'd generate code for int params:(
 
 	static struct Mapping { // transducer
-		auto wrap(Wrapped)(Wrapped next) { //next is a stackof reducing Structs, at the bottom of which is the transducing process
-			static struct Reducing { // reducing "function", no arity-0 equivalent for D because the pattern is not popular in D
-				mixin ReducingBase!(Wrapped);
-				this(Wrapped next) {
+		auto opCall(Decorated)(Decorated next) { //next is a stackof step Structs, at the bottom of which is the transducing process
+			static struct ProcessDecorator { // step "function", no arity-0 equivalent for D because the pattern is not popular in D
+				mixin ProcessDecoratorMixin!(Decorated);
+				this(Decorated next) {
 					this.next = next;
 				}
-				auto reducing(T) (ReturnType!(Wrapped.completed) seed, T elem) {
-					return next.reducing(seed, f(elem));
+				auto step(T) (ReturnType!(Decorated.completed) seed, T elem) {
+					return next.step(seed, f(elem));
 				}
 			}
-			return Reducing(next);
+			return ProcessDecorator(next);
 		}
 	}
-	return Mapping();
+	Mapping m;
+	return m;
 }
 
 //if a transducer gets a reduced value from nested step call it must never call that step function again with input
@@ -118,24 +110,24 @@ auto taking(size_t howMany) {
 		this(size_t howMany) {
 			this.howMany = howMany;
 		}
-		auto wrap(Wrapped)(Wrapped next) {
-			static struct Reducing {
-				mixin ReducingBase!(Wrapped);
+		auto opCall(Decorated)(Decorated next) {
+			static struct ProcessDecorator {
+				mixin ProcessDecoratorMixin!(Decorated);
 				private size_t howMany;
-				this(Wrapped next, size_t howMany) {
+				this(Decorated next, size_t howMany) {
 					this.next = next;
 					this.howMany = howMany;
 				}
-				auto reducing(T) (ReturnType!(Wrapped.completed) seed, T elem) {
+				auto step(T) (ReturnType!(Decorated.completed) seed, T elem) {
 					if (--howMany == howMany.max) {
 						this.markReduced();
 						return seed;
 					}
-					auto result = next.reducing(seed, elem);
+					auto result = next.step(seed, elem);
 					return result;
 				}
 			}
-			return Reducing(next, howMany);
+			return ProcessDecorator(next, howMany);
 		}
 	}
 	return Taking(howMany);
@@ -144,15 +136,15 @@ auto taking(size_t howMany) {
 // TransducibleContext
 
 // transduce
-//basic transform of reducing fn
+//basic transform of step fn
 //reduce but with completion call at the end
-//implies reducing fn must have arity-1
+//implies step fn must have arity-1
 
-// reducing fn alone won't work because it has no arity 1!
+// step fn alone won't work because it has no arity 1!
 // by default we could wrap regular fn with completed step that just returns
 // note that clojure has IReduce interface which lets a collection implement reduce on it's own
-auto transduce(alias reducingFn, R, Transducer, S)(R r, S s, Transducer t) {
-	auto transducerStack = t.wrap(reducingFn);//
+auto transduce(alias stepFn, R, Transducer, S)(R r, S s, Transducer t) {
+	auto transducerStack = t.wrap(stepFn);//
 	auto returnValue = s;// reduce!((, ){} )(r, s); //here in clojure reduced is checked, D doesn't have a mechanism to stop reduce, so we need our own reduce
 	// for now we could just run in a loop to test
 	return transducerStack.completed(returnValue);
@@ -171,14 +163,14 @@ auto into(Out, Transducer, R)(Out to, Transducer t, R from) {
 		Out completed(Out seed) {
 			return seed;
 		}
-		Out reducing(Out seed, ElementType!Out elem) {
+		Out step(Out seed, ElementType!Out elem) {
 			put(seed, elem);
 			return seed;
 		}
 	}
-	auto transducerStack = t.wrap(IntoProcess());
+	auto transducerStack = t(IntoProcess());
 	foreach (el; from) {
-		to = transducerStack.reducing(to, el);
+		to = transducerStack.step(to, el);
 		if(transducerStack.isReduced())
 			break;
 	}
@@ -187,9 +179,6 @@ auto into(Out, Transducer, R)(Out to, Transducer t, R from) {
 
 // educe
 // pin collection to transducer, created a sequence on which element reads execute transducer code
-
-
-
 
 int minus(int i) {
 	return -i;
@@ -220,4 +209,51 @@ unittest {
 	auto transducer = taking(2);
 	into(ar,transducer, [1, 2, 3, 4]);
 	assert( ar == [1, 2, 0, 0]);
+}
+
+auto comp(T1, T...)(auto ref T1 t1, auto ref T args)
+{
+	static if (T.length == 0) {
+		return args[0];
+	}
+	else static if (T.length == 1) {
+		return Composing!(T1, T[0])(t1, args[0]);
+	}
+	else {
+		return comp(t1, comp(args));
+	}
+}
+
+private struct Composing(T, U) {
+	private T t;
+	private U u;
+	this(T t, U u) {
+		this.t = t;
+		this.u = u;
+	}
+	auto opCall(Decorated)(Decorated next) {
+		return t(u(next));
+	}
+}
+
+unittest {
+	int[] ar = new int[](4);
+	
+	auto transducer = comp(taking(2), mapping!minus);
+	
+	into(ar,transducer, [1, 2, 3, 4]);
+	assert( ar == [-1, -2, 0, 0]);
+}
+
+int twice(int i) {
+	return i*2;
+}
+unittest {
+	
+	int[] ar = new int[](4);
+
+	auto transducer = comp(taking(2), mapping!minus, mapping!twice);
+
+	into(ar,transducer, [1, 2, 3, 4]);
+	assert( ar == [-2, -4, 0, 0]);
 }
