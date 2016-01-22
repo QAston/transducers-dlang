@@ -29,6 +29,7 @@ import std.functional;
 import std.range.primitives;
 import std.array;
 import std.traits;
+import std.container.array;
 
 auto mapReducing(alias f, S, T)(S seed, T elem) {
 	put(seed,f(elem));
@@ -50,13 +51,9 @@ auto filterl(alias f, S, R) (ref S s, R r) {
 }
 
 mixin template ProcessDecoratorMixin(Decorated) {
-	Decorated process;
-	// those 2 could possibly be free function, but they'd have access issues with transducers defined in other modules?
-	bool isTerminatedEarly() @property {
-		return process.isTerminatedEarly();
-	}
-	void markTerminatedEarly() {
-		process.markTerminatedEarly();
+	private Decorated process;
+	ref typeof(process.decoratedProcess()) decoratedProcess() @property {
+		return process.decoratedProcess;
 	}
 	// only buffered transducers need flush
 	void flush() {
@@ -64,7 +61,18 @@ mixin template ProcessDecoratorMixin(Decorated) {
 	}
 }
 
+bool isTerminatedEarly(Process)(ref Process process) {
+	return process.decoratedProcess().isTerminatedEarly();
+}
+
+void markTerminatedEarly(Process)(ref Process process) {
+	process.decoratedProcess().markTerminatedEarly();
+}
+
 mixin template ProcessMixin() {
+	ref typeof(this) decoratedProcess() {
+		return this;
+	}
 	private bool terminatedEarly;
 	bool isTerminatedEarly() @property {
 		return terminatedEarly;
@@ -93,13 +101,13 @@ auto mapping(alias f)() {
 	// the created objs are used privately
 	// type specialization cannot be done at runtime, so templates needed
 	static struct Mapping { // transducer
-		auto opCall(Decorated)(Decorated process) { // process is a TransducibleProcess to decorate, possibly already decorated
+		auto opCall(Decorated)(auto ref Decorated process) { // process is a TransducibleProcess to decorate, possibly already decorated
 			static struct ProcessDecorator {
 				mixin ProcessDecoratorMixin!(Decorated);
 				this(Decorated process) {
 					this.process = process;
 				}
-				void step(T) (T elem) {
+				void step(T) (auto ref T elem) {
 					process.step(f(elem));
 				}
 			}
@@ -119,7 +127,7 @@ auto taking(size_t howMany) {
 		this(size_t howMany) {
 			this.howMany = howMany;
 		}
-		auto opCall(Decorated)(Decorated process) {
+		auto opCall(Decorated)(auto ref Decorated process) {
 			static struct ProcessDecorator {
 				mixin ProcessDecoratorMixin!(Decorated);
 				private size_t howMany;
@@ -127,7 +135,7 @@ auto taking(size_t howMany) {
 					this.process = process;
 					this.howMany = howMany;
 				}
-				void step(T) (T elem) {
+				void step(T) (auto ref T elem) {
 					if (--howMany == howMany.max) {
 						process.markTerminatedEarly();
 					}
@@ -135,53 +143,129 @@ auto taking(size_t howMany) {
 						process.step(elem);
 					}
 				}
+				// maybe should add a steps overload which takes array/range of args, for efficiency?
 			}
 			return ProcessDecorator(process, howMany);
 		}
 	}
 	return Taking(howMany);
-}	
+}
 
-// TransducibleContext
+interface VirtualProcess(T) {
+	void step(T elem);
+	void flush();
+	bool isTerminatedEarly() @property;
+	void markTerminatedEarly();
 
-// transduce
-//basic transform of step fn
-//reduce but with completion call at the end
-//implies step fn must have arity-1
+}
+// TransducibleContexts
 
-// step fn alone won't work because it has no arity 1!
-// by default we could wrap regular fn with completed step that just returns
-// note that clojure has IReduce interface which lets a collection implement reduce on it's own
-/*auto transduce(alias stepFn, R, Transducer, S)(R r, S s, Transducer t) {
-	auto transducerStack = t.wrap(stepFn);//
-	auto returnValue = s;// reduce!((, ){} )(r, s); //here in clojure reduced is checked, D doesn't have a mechanism to stop reduce, so we need our own reduce
-	// for now we could just run in a loop to test
-	return transducerStack.completed(returnValue);
-}*/
+// what to have:
+// interfacing with ranges
+//	create transducer with a range?
+//  void step(Range r) instead of buffered ranges (would transduces range at a time instead of el at a time)
+
+// create a lazy range using a transducer
+// range element type cannot be deduced because underlying process can live without transducers, types cannot be deduced by wrapper for underlying type
+template transducerRange(ElementType) {
+	auto transducerRange(R, Transducer)(R range, Transducer t, size_t initialBufferSize = 1) {
+		auto transducerStack = t(RangeProcess!(ElementType)(initialBufferSize));
+		return TransducibleProcessRange!(R, typeof(transducerStack), ElementType)(range, transducerStack);
+	}
+}
+
+private struct RangeProcess(ElementType) {
+	mixin ProcessMixin!();
+	private Array!ElementType _buffer;
+	this(size_t initialBufferSize = 1) {
+		this._buffer.reserve(initialBufferSize);
+	}
+	void step(ElementType elem) {
+		this._buffer.insertBack(elem);
+	}
+}
+
+private struct TransducibleProcessRange(Range, Process, ElementType) {
+    alias R = Unqual!Range;
+    R _input;
+	Process _process;
+	size_t _currentIndex;
+
+	private ref Array!ElementType buffer() @property {
+		return _process.decoratedProcess()._buffer;
+	}
+
+	private bool isBufferEmpty() {
+		return _currentIndex == size_t.max;
+	}
+	private void popBuffer() {
+		_currentIndex++;
+		if (_currentIndex >= buffer.length) {
+			_currentIndex = size_t.max; // mark as empty
+			buffer.clear();
+			nextBufferValue();
+		}
+	}
+	private void nextBufferValue() {
+		assert(isBufferEmpty());
+		assert(buffer.length == 0);
+
+		while  (!_input.empty() && !_process.isTerminatedEarly()) {
+			_process.step(_input.front());
+			_input.popFront();
+			if (_input.empty() || _process.isTerminatedEarly()) {
+				// last step call
+				_process.flush();
+			}
+			if (buffer.length > 0) {
+				_currentIndex = 0; // buffer filled, start returning elements from the beginning
+				break;
+			}
+		}
+	}
+
+    this(R r, Process process) {
+		_process = process;
+        _input = r;
+		_currentIndex = size_t.max;
+		nextBufferValue();
+    }
+
+    @property bool empty() {
+		return isBufferEmpty();
+	}
+
+    void popFront() {
+		popBuffer();
+    }
+
+    @property auto front() {
+        return buffer[_currentIndex];
+    }
 }
 
 // populates output range with input range processed by a transducer
-auto into(Out, Transducer, R)(Out to, Transducer t, R from) {
-	static struct IntoProcess {
-		private Out accumulator;
-		this(Out accumulator) {
-			this.accumulator = accumulator;
-		}
-		mixin ProcessMixin!();
-		alias InputType = ElementType!Out;
-		void step(InputType elem) {
-			put(accumulator, elem);
-		}
-	}
-	IntoProcess process = IntoProcess(to);
-	auto transducerStack = t(process);
+auto into(Out, Transducer, R)(Out to, auto ref Transducer t, R from) {
+	auto transducerStack = t(IntoProcess!(Out)(to));
 	foreach (el; from) {
 		transducerStack.step(el);
 		if(transducerStack.isTerminatedEarly())
 			break;
 	}
 	transducerStack.flush();
-	return process.accumulator;
+	return transducerStack.decoratedProcess().accumulator;
+}
+
+private struct IntoProcess(Out) {
+	private Out accumulator;
+	this(Out accumulator) {
+		this.accumulator = accumulator;
+	}
+	mixin ProcessMixin!();
+	alias InputType = ElementType!Out;
+	void step(InputType elem) {
+		put(accumulator, elem);
+	}
 }
 
 // educe
@@ -238,7 +322,7 @@ private struct Composing(T, U) {
 		this.t = t;
 		this.u = u;
 	}
-	auto opCall(Decorated)(Decorated next) {
+	auto opCall(Decorated)(auto ref Decorated next) {
 		return t(u(next));
 	}
 }
@@ -263,4 +347,13 @@ unittest {
 
 	into(ar,transducer, [1, 2, 3, 4]);
 	assert( ar == [-2, -4, 0, 0]);
+}
+
+unittest {
+	auto transducer = comp(taking(2), mapping!minus, mapping!twice);
+
+	auto res = transducerRange!(int)([1, 2, 3, 4], transducer).array();
+
+	writeln(res);
+	assert(res == [-2, -4]);
 }
