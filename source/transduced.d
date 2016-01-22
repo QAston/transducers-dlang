@@ -50,18 +50,34 @@ auto filterl(alias f, S, R) (ref S s, R r) {
 }
 
 mixin template ProcessDecoratorMixin(Decorated) {
-	Decorated next;
-	final bool isReduced() @property {
-		return next.isReduced();
+	Decorated process;
+	// those 2 could possibly be free function, but they'd have access issues with transducers defined in other modules?
+	bool isTerminatedEarly() @property {
+		return process.isTerminatedEarly();
 	}
-	final void markReduced() {
-		next.markReduced();
+	void markTerminatedEarly() {
+		process.markTerminatedEarly();
 	}
-	auto completed(ReturnType!(Decorated.completed) seed) {
-		return next.completed(seed);
+	// only buffered transducers need flush
+	void flush() {
+		process.flush();
 	}
 }
 
+mixin template ProcessMixin() {
+	private bool terminatedEarly;
+	bool isTerminatedEarly() @property {
+		return terminatedEarly;
+	}
+	void markTerminatedEarly() {
+		terminatedEarly = true;
+	}
+	void flush() {
+	}
+}
+
+// transducer which calls step function more than once
+// merges input ranges found in the input
 auto catting(){
 	static struct Catting(Decorated) {
 	}
@@ -73,65 +89,58 @@ auto catting(){
 // does not know anything about the process
 // can be shared
 auto mapping(alias f)() {
-	// transducers create an object which apply the given job description to given step function
+	// transducers create an object which apply the given job description to given TransducibleProcess
 	// the created objs are used privately
-	// type specialization cannot be done at runtime, so polymorphism needed
-	// or not, if transducing contexts are just parametrized with type, but then it'd generate code for int params:(
-
+	// type specialization cannot be done at runtime, so templates needed
 	static struct Mapping { // transducer
-		auto opCall(Decorated)(Decorated next) { //next is a stackof step Structs, at the bottom of which is the transducing process
-			static struct ProcessDecorator { // step "function", no arity-0 equivalent for D because the pattern is not popular in D
+		auto opCall(Decorated)(Decorated process) { // process is a TransducibleProcess to decorate, possibly already decorated
+			static struct ProcessDecorator {
 				mixin ProcessDecoratorMixin!(Decorated);
-				this(Decorated next) {
-					this.next = next;
+				this(Decorated process) {
+					this.process = process;
 				}
-				auto step(T) (ReturnType!(Decorated.completed) seed, T elem) {
-					return next.step(seed, f(elem));
+				void step(T) (T elem) {
+					process.step(f(elem));
 				}
 			}
-			return ProcessDecorator(next);
+			return ProcessDecorator(process);
 		}
 	}
 	Mapping m;
 	return m;
 }
 
-//if a transducer gets a reduced value from nested step call it must never call that step function again with input
-//if the step func returns a reduced value, the process must not supply any more input 
-// the reduced value is final accumulation value
-// final accumulation value is still subject to completion
-
-// reduced value could be implemented by some kind of variant type
-// or maybe by a transducer method instead?
-
+// transducer with early termination
+// when transducer stack has isTerminatedEarly flag, TransducibleProcess must not supply more input (using step method)
+// buffered transducer can still call step method in flush() to process input buffered earlier
 auto taking(size_t howMany) {
 	static struct Taking {
 		private size_t howMany;
 		this(size_t howMany) {
 			this.howMany = howMany;
 		}
-		auto opCall(Decorated)(Decorated next) {
+		auto opCall(Decorated)(Decorated process) {
 			static struct ProcessDecorator {
 				mixin ProcessDecoratorMixin!(Decorated);
 				private size_t howMany;
-				this(Decorated next, size_t howMany) {
-					this.next = next;
+				this(Decorated process, size_t howMany) {
+					this.process = process;
 					this.howMany = howMany;
 				}
-				auto step(T) (ReturnType!(Decorated.completed) seed, T elem) {
+				void step(T) (T elem) {
 					if (--howMany == howMany.max) {
-						this.markReduced();
-						return seed;
+						process.markTerminatedEarly();
 					}
-					auto result = next.step(seed, elem);
-					return result;
+					else {
+						process.step(elem);
+					}
 				}
 			}
-			return ProcessDecorator(next, howMany);
+			return ProcessDecorator(process, howMany);
 		}
 	}
 	return Taking(howMany);
-}
+}	
 
 // TransducibleContext
 
@@ -143,38 +152,36 @@ auto taking(size_t howMany) {
 // step fn alone won't work because it has no arity 1!
 // by default we could wrap regular fn with completed step that just returns
 // note that clojure has IReduce interface which lets a collection implement reduce on it's own
-auto transduce(alias stepFn, R, Transducer, S)(R r, S s, Transducer t) {
+/*auto transduce(alias stepFn, R, Transducer, S)(R r, S s, Transducer t) {
 	auto transducerStack = t.wrap(stepFn);//
 	auto returnValue = s;// reduce!((, ){} )(r, s); //here in clojure reduced is checked, D doesn't have a mechanism to stop reduce, so we need our own reduce
 	// for now we could just run in a loop to test
 	return transducerStack.completed(returnValue);
+}*/
 }
 
 // populates output range with input range processed by a transducer
 auto into(Out, Transducer, R)(Out to, Transducer t, R from) {
 	static struct IntoProcess {
-		private bool reduced;
-		final bool isReduced() @property {
-			return reduced;
+		private Out accumulator;
+		this(Out accumulator) {
+			this.accumulator = accumulator;
 		}
-		final void markReduced() {
-			reduced = true;
-		}
-		Out completed(Out seed) {
-			return seed;
-		}
-		Out step(Out seed, ElementType!Out elem) {
-			put(seed, elem);
-			return seed;
+		mixin ProcessMixin!();
+		alias InputType = ElementType!Out;
+		void step(InputType elem) {
+			put(accumulator, elem);
 		}
 	}
-	auto transducerStack = t(IntoProcess());
+	IntoProcess process = IntoProcess(to);
+	auto transducerStack = t(process);
 	foreach (el; from) {
-		to = transducerStack.step(to, el);
-		if(transducerStack.isReduced())
+		transducerStack.step(el);
+		if(transducerStack.isTerminatedEarly())
 			break;
 	}
-	return transducerStack.completed(to);
+	transducerStack.flush();
+	return process.accumulator;
 }
 
 // educe
