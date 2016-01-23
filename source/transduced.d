@@ -1,25 +1,30 @@
 module transduced;
 
-// goal - transformation composition separate from types on which it's defined
-//  is this even needed?
-//    can write adapters that convert to seq?
-// would this solve output range problem?
-//  putting sequentially into anything: output range, another input range, socket...
-// allow composition of transforms without types to be applied later onto types
-// would that even be useful?
-
 /*
 dlang input ranges:
 -pull primitives
--composed using wrapper structures
+-sequential operations provided using wrapper structures - like map, filter...
 
 output ranges:
 -push primitives
--not composed by default
+-no sequential operations provided for those
 
 -transducers
-	-compose operations separately to not commit to push/pull
-	-doesn't require materializing the struct
+	-sequence transformations that are independent of execution strategy and transformed type
+	-composable
+	-easier to write than range wrappers
+	-more algorithms (mapcat - finally!)
+	-usable both in pull and push contexts
+	-work with input ranges, output ranges and anything else you make it!
+		-streams, message queues, observables (Reactive Extensions)...
+	-transformation as an object
+		-but any transformation can be used as an object whenn there are function objects available
+	-compared to ranges
+		-works only with plain input ranges, no random access transformations
+		-buffered transducers allocate and require underlying process to allocate too
+		-therfore may be slower than input ranges transformations
+		-only transformations, do not produce values
+	-like std.range.tee (which just does map) generalized for all possible transformations
 */
 
 import std.stdio;
@@ -80,17 +85,10 @@ mixin template ProcessMixin() {
 	void markTerminatedEarly() {
 		terminatedEarly = true;
 	}
+	// could be called multiple times
 	void flush() {
 	}
 }
-
-// transducer which calls step function more than once
-// merges input ranges found in the input
-auto catting(){
-	static struct Catting(Decorated) {
-	}
-}
-
 
 // function returning a transducer
 // transducer holds the info on what to do, is a runtime object in clojure
@@ -143,12 +141,66 @@ auto taking(size_t howMany) {
 						process.step(elem);
 					}
 				}
-				// maybe should add a steps overload which takes array/range of args, for efficiency?
 			}
 			return ProcessDecorator(process, howMany);
 		}
 	}
 	return Taking(howMany);
+}
+
+auto filtering(alias f)(){
+	static struct Filtering { // transducer
+		auto opCall(Decorated)(auto ref Decorated process) { // process is a TransducibleProcess to decorate, possibly already decorated
+			static struct ProcessDecorator {
+				mixin ProcessDecoratorMixin!(Decorated);
+				this(Decorated process) {
+					this.process = process;
+				}
+				void step(T) (auto ref T elem) {
+					if (f(elem))
+						process.step(elem);
+				}
+			}
+			return ProcessDecorator(process);
+		}
+	}
+	Filtering m;
+	return m;
+}
+
+// transducer which calls step function more than once
+// merges input ranges found in the input
+auto catting(){
+	static struct Catting { // transducer
+		auto opCall(Decorated)(auto ref Decorated process) { // process is a TransducibleProcess to decorate, possibly already decorated
+			static struct ProcessDecorator {
+				mixin ProcessDecoratorMixin!(Decorated);
+				this(Decorated process) {
+					this.process = process;
+				}
+				void step(R) (auto ref R elem)  if (isInputRange!R) {
+					foreach (e; elem) {
+						process.step(e);
+					}
+				}
+			}
+			return ProcessDecorator(process);
+		}
+	}
+	Catting m;
+	return m;
+}
+
+auto mapcatting(alias f)() {
+	return comp(mapping!f, catting());
+}
+
+// when action is only done on flush, use a transducer wrapping a range
+// example: take-last/reverse/sort
+
+// returns a transducer which accumulates all the step inputs into a random access range
+// and processes them on flush using given function
+auto flushing() {
 }
 
 interface VirtualProcess(T) {
@@ -158,12 +210,14 @@ interface VirtualProcess(T) {
 	void markTerminatedEarly();
 
 }
-// TransducibleContexts
+// TransducibleContexts:
 
 // what to have:
 // interfacing with ranges
 //	create transducer with a range?
 //  void step(Range r) instead of buffered ranges (would transduces range at a time instead of el at a time)
+//   every step(Range r) call would have to allocate - unacceptable
+//   but would be great for streams of bytes, it could be the stream interface
 
 // create a lazy range using a transducer
 // range element type cannot be deduced because underlying process can live without transducers, types cannot be deduced by wrapper for underlying type
@@ -268,8 +322,13 @@ private struct IntoProcess(Out) {
 	}
 }
 
-// educe
-// pin collection to transducer, created a sequence on which element reads execute transducer code
+//wrap output range, put method redirects to step function, has flush method which flushes
+//transduceOutput? pretransduce?
+
+// wrap std.stdio.file
+// create a stream-like object for file, which has write and flush
+
+// wrap std.stream...
 
 int minus(int i) {
 	return -i;
@@ -353,7 +412,54 @@ unittest {
 	auto transducer = comp(taking(2), mapping!minus, mapping!twice);
 
 	auto res = transducerRange!(int)([1, 2, 3, 4], transducer).array();
-
-	writeln(res);
 	assert(res == [-2, -4]);
 }
+
+unittest {
+	auto res = transducerRange!(int)([[1, 2, 3, 4]], catting()).array();
+	assert(res == [1, 2, 3, 4]);
+}
+
+int even(int i) {
+	return !(i % 2);
+}
+
+unittest {
+	auto res = transducerRange!(int)([1, 2, 3, 4], filtering!even()).array();
+	assert(res == [2, 4]);
+}
+
+int[] duplicate(int i) {
+	return [i, i];
+}
+
+unittest {
+
+	static struct Dup(T) {
+		this(size_t times) {
+		}
+		T[] opCall(T t) {
+			return repeat(t);
+		}
+	}
+	auto res = transducerRange!(int)([1, 2, 3, 4], mapcatting!duplicate()).array();
+	writeln(res);
+	assert(res == [1, 1, 2, 2, 3, 3, 4, 4]);
+}
+
+//transducers todo - from clojure:
+// remove take-while take-nth take-last drop drop-while replace partition-by partition-all (chunks?) keep keep-indexed map-indexed distinct interpose dedupe random-(possibly implement as a transducer for clojure)
+// from std.range
+// chunks - fixed size chunks of input
+// attach index, return tuples (std.range.enumerate)
+// attach range to processed elements, return tuples (std.range.zip)
+// front traversal - returns first items of input (map would be enough?)
+// indexed 	Creates a range that offers a view of a given range as though its elements were reordered according to a given range of indices.
+// stride - returns every n element from input: equal(stride(a, 3), [ 1, 4, 7, 10 ][])
+// chain - rename comp to chain?
+// from std.algorithm.iteration
+// chunk by: 	chunkBy!((a,b) => a[1] == b[1])([[1, 1], [1, 2], [2, 2], [2, 1]]) returns a range containing 3 subranges: the first with just [1, 1]; the second with the elements [1, 2] and [2, 2]; and the third with just [2, 1].
+// each - do sideffects
+// group: 	group([5, 2, 2, 3, 3]) returns a range containing the tuples tuple(5, 1), tuple(2, 2), and tuple(3, 2).group([5, 2, 2, 3, 3])
+// sum - just suming step for reduce
+// uniq - 	Iterates over the unique elements in a range, which is assumed sorted.
