@@ -24,6 +24,7 @@ output ranges:
 		-buffered transducers allocate and require underlying process to allocate too
 		-therfore may be slower than input ranges transformations
 		-only transformations, do not produce values
+		-works with stack functors (range methods like map allocate them on heap - see http://forum.dlang.org/post/kpwbtskhnkkiwkdsfzby@forum.dlang.org)
 	-like std.range.tee (which just does map) generalized for all possible transformations
 */
 
@@ -57,10 +58,12 @@ auto filterl(alias f, S, R) (ref S s, R r) {
 
 mixin template ProcessDecoratorMixin(Decorated) {
 	private Decorated process;
+	pragma(inline, true)
 	ref typeof(process.decoratedProcess()) decoratedProcess() @property {
 		return process.decoratedProcess;
 	}
-	// only buffered transducers need flush
+	// only buffered transducers need to override flush
+	pragma(inline, true)
 	void flush() {
 		process.flush();
 	}
@@ -75,6 +78,7 @@ void markTerminatedEarly(Process)(ref Process process) {
 }
 
 mixin template ProcessMixin() {
+	pragma(inline, true)
 	ref typeof(this) decoratedProcess() {
 		return this;
 	}
@@ -90,37 +94,59 @@ mixin template ProcessMixin() {
 	}
 }
 
+template isStaticFn(alias f) {
+	enum bool isStaticFn = __traits(isStaticFunction, f);
+}
+
+// wrapper object for static functions
+// needed so we can use function object syntax with static functions
+// allows to use same code by delegates/callable objs and static functions
+struct StaticFn(alias f)  {
+	pragma(inline, true)
+	auto opCall(T...)(auto ref T args) {
+		return f(args);
+	}
+}
+
 // function returning a transducer
 // transducer holds the info on what to do, is a runtime object in clojure
 // does not know anything about the process
 // can be shared
-auto mapping(alias f)() {
+auto mapper(alias f)() if (isStaticFn!f) {
+	return mapper(StaticFn!(f).init);
+}
+auto mapper(F)(F f) {
 	// transducers create an object which apply the given job description to given TransducibleProcess
 	// the created objs are used privately
 	// type specialization cannot be done at runtime, so templates needed
-	static struct Mapping { // transducer
+	static struct Mapper { // transducer
+		private F f;
+		this(F f) {
+			this.f = f;
+		}
 		auto opCall(Decorated)(auto ref Decorated process) { // process is a TransducibleProcess to decorate, possibly already decorated
 			static struct ProcessDecorator {
 				mixin ProcessDecoratorMixin!(Decorated);
-				this(Decorated process) {
+				private F f;
+				this(Decorated process, F f) {
+					this.f  = f;
 					this.process = process;
 				}
 				void step(T) (auto ref T elem) {
 					process.step(f(elem));
 				}
 			}
-			return ProcessDecorator(process);
+			return ProcessDecorator(process, f);
 		}
 	}
-	Mapping m;
-	return m;
+	return Mapper(f);
 }
 
 // transducer with early termination
 // when transducer stack has isTerminatedEarly flag, TransducibleProcess must not supply more input (using step method)
 // buffered transducer can still call step method in flush() to process input buffered earlier
-auto taking(size_t howMany) {
-	static struct Taking {
+auto taker(size_t howMany) {
+	static struct Taker {
 		private size_t howMany;
 		this(size_t howMany) {
 			this.howMany = howMany;
@@ -145,15 +171,24 @@ auto taking(size_t howMany) {
 			return ProcessDecorator(process, howMany);
 		}
 	}
-	return Taking(howMany);
+	return Taker(howMany);
 }
 
-auto filtering(alias f)(){
-	static struct Filtering { // transducer
-		auto opCall(Decorated)(auto ref Decorated process) { // process is a TransducibleProcess to decorate, possibly already decorated
+auto filterer(alias f)() if (isStaticFn!f) {
+	return filterer(StaticFn!(f).init);
+}
+auto filterer(F)(F f) {
+	static struct Filterer {
+		private F f;
+		this(F f) {
+			this.f = f;
+		}
+		auto opCall(Decorated)(auto ref Decorated process) {
 			static struct ProcessDecorator {
 				mixin ProcessDecoratorMixin!(Decorated);
-				this(Decorated process) {
+				private F f;
+				this(Decorated process, F f) {
+					this.f = f;
 					this.process = process;
 				}
 				void step(T) (auto ref T elem) {
@@ -161,38 +196,40 @@ auto filtering(alias f)(){
 						process.step(elem);
 				}
 			}
-			return ProcessDecorator(process);
+			return ProcessDecorator(process, f);
 		}
 	}
-	Filtering m;
-	return m;
+	return Filterer(f);
+}
+
+
+static struct Catter {
+	auto opCall(Decorated)(auto ref Decorated process) const {
+		static struct ProcessDecorator {
+			mixin ProcessDecoratorMixin!(Decorated);
+			this(Decorated process) {
+				this.process = process;
+			}
+			void step(R) (auto ref R elem)  if (isInputRange!R) {
+				foreach (e; elem) {
+					process.step(e);
+				}
+			}
+		}
+		return ProcessDecorator(process);
+	}
 }
 
 // transducer which calls step function more than once
 // merges input ranges found in the input
-auto catting(){
-	static struct Catting { // transducer
-		auto opCall(Decorated)(auto ref Decorated process) { // process is a TransducibleProcess to decorate, possibly already decorated
-			static struct ProcessDecorator {
-				mixin ProcessDecoratorMixin!(Decorated);
-				this(Decorated process) {
-					this.process = process;
-				}
-				void step(R) (auto ref R elem)  if (isInputRange!R) {
-					foreach (e; elem) {
-						process.step(e);
-					}
-				}
-			}
-			return ProcessDecorator(process);
-		}
-	}
-	Catting m;
-	return m;
-}
+// just a variable - no need for a constructor when there's no state
+immutable(Catter) catter;
 
-auto mapcatting(alias f)() {
-	return comp(mapping!f, catting());
+auto mapcatter(alias f)() if (isStaticFn!f) {
+	return mapcatter(StaticFn!(f).init);
+}
+auto mapcatter(F)(F f) {
+	return comp(mapper(f), catter);
 }
 
 // when action is only done on flush, use a transducer wrapping a range
@@ -200,7 +237,7 @@ auto mapcatting(alias f)() {
 
 // returns a transducer which accumulates all the step inputs into a random access range
 // and processes them on flush using given function
-auto flushing() {
+auto flusher() {
 }
 
 interface VirtualProcess(T) {
@@ -222,7 +259,7 @@ interface VirtualProcess(T) {
 // create a lazy range using a transducer
 // range element type cannot be deduced because underlying process can live without transducers, types cannot be deduced by wrapper for underlying type
 template transducerRange(ElementType) {
-	auto transducerRange(R, Transducer)(R range, Transducer t, size_t initialBufferSize = 1) {
+	auto transducerRange(R, Transducer)(R range, Transducer t, size_t initialBufferSize = 1) if(isInputRange!R) {
 		auto transducerStack = t(RangeProcess!(ElementType)(initialBufferSize));
 		return TransducibleProcessRange!(R, typeof(transducerStack), ElementType)(range, transducerStack);
 	}
@@ -239,7 +276,7 @@ private struct RangeProcess(ElementType) {
 	}
 }
 
-private struct TransducibleProcessRange(Range, Process, ElementType) {
+private struct TransducibleProcessRange(Range, Process, ElementType) if(isInputRange!Range) {
     alias R = Unqual!Range;
     R _input;
 	Process _process;
@@ -299,7 +336,7 @@ private struct TransducibleProcessRange(Range, Process, ElementType) {
 }
 
 // populates output range with input range processed by a transducer
-auto into(Out, Transducer, R)(Out to, auto ref Transducer t, R from) {
+auto into(Out, Transducer, R)(Out to, auto ref Transducer t, R from) if (isInputRange!R && isOutputRange!(Out, ElementType!Out)) {
 	auto transducerStack = t(IntoProcess!(Out)(to));
 	foreach (el; from) {
 		transducerStack.step(el);
@@ -349,14 +386,14 @@ unittest {
 
 unittest {
 	int[] ar = new int[](4);
-	auto transducer = mapping!minus;
+	auto transducer = mapper!(minus);
 	into(ar,transducer, [1, 2, 3, 4]);
 	assert( ar == [-1, -2, -3, -4]);
 }
 
 unittest {
 	int[] ar = new int[](4);
-	auto transducer = taking(2);
+	auto transducer = taker(2);
 	into(ar,transducer, [1, 2, 3, 4]);
 	assert( ar == [1, 2, 0, 0]);
 }
@@ -367,14 +404,14 @@ auto comp(T1, T...)(auto ref T1 t1, auto ref T args)
 		return args[0];
 	}
 	else static if (T.length == 1) {
-		return Composing!(T1, T[0])(t1, args[0]);
+		return Composer!(T1, T[0])(t1, args[0]);
 	}
 	else {
 		return comp(t1, comp(args));
 	}
 }
 
-private struct Composing(T, U) {
+private struct Composer(T, U) {
 	private T t;
 	private U u;
 	this(T t, U u) {
@@ -389,7 +426,7 @@ private struct Composing(T, U) {
 unittest {
 	int[] ar = new int[](4);
 	
-	auto transducer = comp(taking(2), mapping!minus);
+	auto transducer = comp(taker(2), mapper!minus);
 	
 	into(ar,transducer, [1, 2, 3, 4]);
 	assert( ar == [-1, -2, 0, 0]);
@@ -402,21 +439,21 @@ unittest {
 	
 	int[] ar = new int[](4);
 
-	auto transducer = comp(taking(2), mapping!minus, mapping!twice);
+	auto transducer = comp(taker(2), mapper!minus, mapper!twice);
 
 	into(ar,transducer, [1, 2, 3, 4]);
 	assert( ar == [-2, -4, 0, 0]);
 }
 
 unittest {
-	auto transducer = comp(taking(2), mapping!minus, mapping!twice);
+	auto transducer = comp(taker(2), mapper!minus, mapper!twice);
 
 	auto res = transducerRange!(int)([1, 2, 3, 4], transducer).array();
 	assert(res == [-2, -4]);
 }
 
 unittest {
-	auto res = transducerRange!(int)([[1, 2, 3, 4]], catting()).array();
+	auto res = transducerRange!(int)([[1, 2, 3, 4]], catter).array();
 	assert(res == [1, 2, 3, 4]);
 }
 
@@ -425,7 +462,7 @@ int even(int i) {
 }
 
 unittest {
-	auto res = transducerRange!(int)([1, 2, 3, 4], filtering!even()).array();
+	auto res = transducerRange!(int)([1, 2, 3, 4], filterer!even()).array();
 	assert(res == [2, 4]);
 }
 
@@ -433,18 +470,35 @@ int[] duplicate(int i) {
 	return [i, i];
 }
 
-unittest {
-
-	static struct Dup(T) {
-		this(size_t times) {
-		}
-		T[] opCall(T t) {
-			return repeat(t);
-		}
+static struct Dup(T) {
+	size_t times;
+	this(size_t times) {
+		this.times = times;
 	}
-	auto res = transducerRange!(int)([1, 2, 3, 4], mapcatting!duplicate()).array();
-	writeln(res);
+	~this() {
+		times = 0;
+	}
+	T[] opCall(T t) {
+		return repeat(t, times).array();
+	}
+}
+
+unittest {
+	auto res = transducerRange!(int)([1, 2, 3, 4], mapcatter!duplicate()).array();
 	assert(res == [1, 1, 2, 2, 3, 3, 4, 4]);
+}
+
+unittest {
+	auto dupper = Dup!int(2);
+	auto res = transducerRange!(int)([1, 2, 3, 4], mapcatter(dupper)).array();
+	assert(res == [1, 1, 2, 2, 3, 3, 4, 4]);
+}
+
+unittest {
+	auto dupper = Dup!int(2);
+	int a = 2;
+	auto res = transducerRange!(int)([1, 2, 3, 4], mapcatter((int x)=>[a, a])).array();
+	assert(res == [2,2,2,2,2,2,2,2]);
 }
 
 //transducers todo - from clojure:
