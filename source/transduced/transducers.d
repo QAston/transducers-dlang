@@ -1,3 +1,6 @@
+/++
+Module providing transducers - objects encapsulating transformations of sequential processes i.e. map, filter.
++/
 module transduced.transducers;
 
 import transduced.util;
@@ -8,9 +11,13 @@ import std.range.primitives;
 // transducer holds the info about what to do with input, but doesn't know the overall process
 // opCall applies the transducer to given process
 // can be shared
+/++
+Returns a transducer modifying the process by transforming each step input using $(D f) function. 
++/
 auto mapper(alias f)() if (isStaticFn!f) {
 	return mapper(StaticFn!(f).init);
 }
+/// ditto
 auto mapper(F)(F f) {
 	// transducers create an object which apply the given job description to given TransducibleProcess
 	// the created objs are used privately
@@ -38,9 +45,22 @@ auto mapper(F)(F f) {
 	return Mapper(f);
 }
 
+///
+unittest {
+	import std.array;
+	import transduced.contexts;
+	
+	auto output = appender!(int[])();
+	[1, 2, 3, 4].into(mapper!((int x) => -x), output);
+	assert(output.data == [-1, -2, -3, -4]);
+}
+
 // transducer with early termination
 // when transducer stack has isTerminatedEarly flag, TransducibleProcess must not supply more input (using step method)
 // buffered transducer can still call step method in flush() to process input buffered earlier
+/++
+Returns a transducer modifying the process by forwarding only first $(D howMany) step inputs.
++/
 auto taker(size_t howMany) {
 	static struct Taker {
 		private size_t howMany;
@@ -70,10 +90,14 @@ auto taker(size_t howMany) {
 	return Taker(howMany);
 }
 
-auto filterer(alias f)() if (isStaticFn!f) {
-	return filterer(StaticFn!(f).init);
+/++
+Returns a transducer modifying the process by forwarding only step inputs satisfying $(D pred).
++/
+auto filterer(alias pred)() if (isStaticFn!pred) {
+	return filterer(StaticFn!(pred).init);
 }
-auto filterer(F)(F f) {
+/// ditto
+auto filterer(F)(F pred) {
 	static struct Filterer {
 		private F f;
 		this(F f) {
@@ -95,11 +119,29 @@ auto filterer(F)(F f) {
 			return ProcessDecorator(process, f);
 		}
 	}
-	return Filterer(f);
+	return Filterer(pred);
+}
+
+///
+unittest {
+	import std.array;
+	import transduced.contexts;
+
+	auto output = appender!(int[])();
+	[1, 2, 3, 4].into(filterer!((int x) => x % 2 == 1), output);
+	assert(output.data == [1, 3]);
 }
 
 
-static struct Catter {
+/++
+Returns a transducer modifying the process by converting $(D InputRange) inputs to a series of inputs with all $(D InputRange) elements.
++/
+//transducer which calls step function more than once
+//merges input ranges found in the input
+//just a variable - no need for a constructor when there's no state
+immutable(Flattener) flattener;
+/// ditto
+static struct Flattener {
 	auto opCall(Decorated)(auto ref Decorated process) inout {
 		static struct ProcessDecorator {
 			mixin ProcessDecoratorMixin!(Decorated);
@@ -116,26 +158,84 @@ static struct Catter {
 	}
 }
 
-// transducer which calls step function more than once
-// merges input ranges found in the input
-// just a variable - no need for a constructor when there's no state
-immutable(Catter) catter;
+///
+unittest {
+	import std.array;
+	import transduced.contexts;
 
-auto mapcatter(alias f)() if (isStaticFn!f) {
-	return mapcatter(StaticFn!(f).init);
-}
-auto mapcatter(F)(F f) {
-	return comp(mapper(f), catter);
+	auto output = appender!(int[])();
+	[[1, 2], [3, 4]].into(flattener, output);
+	assert(output.data == [1, 2, 3, 4]);
 }
 
-// when action is only done on flush, use a transducer wrapping a range
-// example: take-last/reverse/sort
-
-// returns a transducer which accumulates all the step inputs into a random access range
-// and processes them on flush using given function
-auto flusher() {
+/++
+Composition of mapper and flattener.
++/
+auto flatMapper(alias f)() if (isStaticFn!f) {
+	return flatMapper(StaticFn!(f).init);
+}
+/// ditto
+auto flatMapper(F)(F f) {
+	return comp(mapper(f), flattener);
 }
 
+///
+unittest {
+	import std.array;
+	import transduced.contexts;
+
+	auto output = appender!(int[])();
+	[1, 2, 3, 4].into(flatMapper!((int x) => [x, x])(), output);
+	assert(output.data == [1, 1, 2, 2, 3, 3, 4, 4]);
+}
+
+/++
+Returns a transducer modifying the process by buffering all the input and transforming it using given $(D f) function on f $(D flush).
+
+This function allows one to plug range algorithms into transducers ecosystem.
+Note that this transducer buffers all steps input until $(D flush), that results in following sideffects:
+	- no steps are done untill flush, so process is not really continuous
+	- internal transducer buffer has to allocate memory for that 
+
+Params:
+	f = a function taking an input range, and returning one.
+		The function will be executed on flush with a random access range having all input data accumulated. 
+		Returned range will be forwarded to the decorated process.
++/
+auto flusher(alias f)() if (isStaticFn!f) {
+	return flusher(StaticFn!(f).init);
+}
+/// ditto
+auto flusher(F)(F f) {
+	static struct Flusher {
+		private F f;
+		this(F f) {
+			this.f = f;
+		}
+		auto opCall(Decorated)(auto ref Decorated process) {
+			/*
+			static struct ProcessDecorator {
+				mixin ProcessDecoratorMixin!(Decorated);
+				private F f;
+				this(Decorated process, F f) {
+					this.f = f;
+					this.process = process;
+				}
+				void step(T) (auto ref T elem) {
+					if (f(elem))
+						process.step(elem);
+				}
+			}
+			return ProcessDecorator(process, f);
+			*/
+		}
+	}
+	return Flusher(f);
+}
+
+/++
+Returns a transducer modifying the process by wrapping it with the composition of given transducers.
++/
 auto comp(T1, T...)(auto ref T1 t1, auto ref T args)
 {
 	static if (T.length == 0) {
@@ -147,6 +247,16 @@ auto comp(T1, T...)(auto ref T1 t1, auto ref T args)
 	else {
 		return comp(t1, comp(args));
 	}
+}
+
+///
+unittest {
+	import std.array;
+	import transduced.contexts;
+
+	auto output = appender!(int[])();
+	[1, 2, 3, 4].into(comp(mapper!((int x) => -x), taker(2)), output);
+	assert(output.data == [-1, -2]);
 }
 
 private struct Composer(T, U) {
@@ -161,23 +271,6 @@ private struct Composer(T, U) {
 	}
 }
 
-//transducers todo - from clojure:
-// remove take-while take-nth take-last drop drop-while replace partition-by partition-all (chunks?) keep keep-indexed map-indexed distinct interpose dedupe random-(possibly implement as a transducer for clojure)
-// from std.range
-// chunks - fixed size chunks of input
-// attach index, return tuples (std.range.enumerate)
-// attach range to processed elements, return tuples (std.range.zip)
-// front traversal - returns first items of input (map would be enough?)
-// indexed 	Creates a range that offers a view of a given range as though its elements were reordered according to a given range of indices.
-// stride - returns every n element from input: equal(stride(a, 3), [ 1, 4, 7, 10 ][])
-// chain - rename comp to chain?
-// from std.algorithm.iteration
-// chunk by: 	chunkBy!((a,b) => a[1] == b[1])([[1, 1], [1, 2], [2, 2], [2, 1]]) returns a range containing 3 subranges: the first with just [1, 1]; the second with the elements [1, 2] and [2, 2]; and the third with just [2, 1].
-// each - do sideffects
-// group: 	group([5, 2, 2, 3, 3]) returns a range containing the tuples tuple(5, 1), tuple(2, 2), and tuple(3, 2).group([5, 2, 2, 3, 3])
-// sum - just suming step for reduce
-// uniq - 	Iterates over the unique elements in a range, which is assumed sorted.
-
 version(unittest) {
 	import std.array;
 	import transduced.contexts;
@@ -188,16 +281,17 @@ version(unittest) {
 	}
 
 	unittest {
+		
 		int[] ar = new int[](4);
 		auto transducer = mapper!(minus);
-		into(ar,transducer, [1, 2, 3, 4]);
+		[1, 2, 3, 4].into(transducer, ar);
 		assert( ar == [-1, -2, -3, -4]);
 	}
 
 	unittest {
 		int[] ar = new int[](4);
 		auto transducer = taker(2);
-		into(ar,transducer, [1, 2, 3, 4]);
+		[1, 2, 3, 4].into(transducer, ar);
 		assert( ar == [1, 2, 0, 0]);
 	}
 
@@ -206,7 +300,7 @@ version(unittest) {
 
 		auto transducer = comp(taker(2), mapper!minus);
 
-		into(ar,transducer, [1, 2, 3, 4]);
+		[1, 2, 3, 4].into(transducer, ar);
 		assert( ar == [-1, -2, 0, 0]);
 	}
 
@@ -219,7 +313,7 @@ version(unittest) {
 
 		auto transducer = comp(taker(2), mapper!minus, mapper!twice);
 
-		into(ar,transducer, [1, 2, 3, 4]);
+		[1, 2, 3, 4].into(transducer, ar);
 		assert( ar == [-2, -4, 0, 0]);
 	}
 
@@ -231,7 +325,7 @@ version(unittest) {
 	}
 
 	unittest {
-		auto res = transducerRange!(int)([[1, 2, 3, 4]], catter).array();
+		auto res = transducerRange!(int)([[1, 2, 3, 4]], flattener).array();
 		assert(res == [1, 2, 3, 4]);
 	}
 
@@ -262,20 +356,20 @@ version(unittest) {
 	}
 
 	unittest {
-		auto res = transducerRange!(int)([1, 2, 3, 4], mapcatter!duplicate()).array();
+		auto res = transducerRange!(int)([1, 2, 3, 4], flatMapper!duplicate()).array();
 		assert(res == [1, 1, 2, 2, 3, 3, 4, 4]);
 	}
 
 	unittest {
 		auto dupper = Dup!int(2);
-		auto res = transducerRange!(int)([1, 2, 3, 4], mapcatter(dupper)).array();
+		auto res = transducerRange!(int)([1, 2, 3, 4], flatMapper(dupper)).array();
 		assert(res == [1, 1, 2, 2, 3, 3, 4, 4]);
 	}
 
 	unittest {
 		auto dupper = Dup!int(2);
 		int a = 2;
-		auto res = transducerRange!(int)([1, 2, 3, 4], mapcatter((int x)=>[a, a])).array();
+		auto res = transducerRange!(int)([1, 2, 3, 4], flatMapper((int x)=>[a, a])).array();
 		assert(res == [2,2,2,2,2,2,2,2]);
 	}
 }

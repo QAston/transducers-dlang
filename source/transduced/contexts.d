@@ -1,3 +1,8 @@
+/++
+Module providing transducible contexts.
+
+A transducible context is a function or an object which uses decorated sequential process.
++/
 module transduced.contexts;
 
 import std.range.primitives;
@@ -6,17 +11,11 @@ import std.container.array;
 import transduced.util;
 import transduced.core;
 
-// TransducibleContexts:
+/++
+Returns a lazy range of $(D ElementType) items, each item lazily processed by prodived transducer $(D t)
 
-// what to have:
-// interfacing with ranges
-//	create transducer with a range?
-//  void step(Range r) instead of buffered ranges (would transduces range at a time instead of el at a time)
-//   every step(Range r) call would have to allocate - unacceptable
-//   but would be great for streams of bytes, it could be the stream interface
-
-// create a lazy range using a transducer
-// range element type cannot be deduced because underlying process can live without transducers, types cannot be deduced by wrapper for underlying type
+Range element type must be given and cannot be deduced from transducers because transducers are independent of what they decorate, range in this case.
++/
 template transducerRange(ElementType) {
 	auto transducerRange(R, Transducer)(R range, Transducer t, size_t initialBufferSize = 1) if(isInputRange!R) {
 		auto transducerStack = t(RangeProcess!(ElementType)(initialBufferSize));
@@ -95,8 +94,12 @@ private struct TransducibleProcessRange(Range, Process, ElementType) if(isInputR
     }
 }
 
-// populates output range with input range processed by a transducer
-auto into(Out, Transducer, R)(Out to, auto ref Transducer t, R from) if (isInputRange!R && isOutputRange!(Out, ElementType!Out)) {
+/++
+Populates output range $(D to) with contents of input range $(D from) processed by a transducer.
++/
+auto into(R, Transducer, Out)(R from, auto ref Transducer t, Out to) if (isInputRange!R)
+// can't check for output range because output from transducer is unknown && isOutputRange!(Out, ElementType!Out)
+{
 	auto transducerStack = t(IntoProcess!(Out)(to));
 	foreach (el; from) {
 		transducerStack.step(el);
@@ -113,8 +116,7 @@ private struct IntoProcess(Out) {
 		this.accumulator = accumulator;
 	}
 	mixin ProcessMixin!();
-	alias InputType = ElementType!Out;
-	void step(InputType elem) {
+	void step(InputType)(InputType elem) {
 		put(accumulator, elem);
 	}
 }
