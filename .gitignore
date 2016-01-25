@@ -9,3 +9,4 @@ __dummy.html
 dub.selections.json
 *.suo
 *.lib
+/docs

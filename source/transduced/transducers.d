@@ -89,6 +89,15 @@ auto taker(size_t howMany) {
 	}
 	return Taker(howMany);
 }
+///
+unittest {
+	import std.array;
+	import transduced.contexts;
+
+	auto output = appender!(int[])();
+	[1, 2, 3, 4].into(taker(2), output);
+	assert(output.data == [1, 2]);
+}
 
 /++
 Returns a transducer modifying the process by forwarding only step inputs satisfying $(D pred).
