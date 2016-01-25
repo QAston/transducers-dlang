@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+	<meta charset="utf-8">
+	<title>transduced.transducers - Transduced documentation</title>
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<meta name="description" content="">
+	<meta name="author" content="">
+
+	<!-- styles -->
+	<link href="bootDoc/assets/css/bootstrap.css" rel="stylesheet">
+	<style type="text/css">
+		body {
+		padding-top: 60px;
+		padding-bottom: 40px;
+		}
+		.sidebar-nav {
+		padding: 9px 0;
+		}
+	</style>
+	<link href="bootDoc/assets/css/bootstrap-responsive.css" rel="stylesheet">
+	<link href="bootDoc/bootdoc.css" rel="stylesheet">
+
+	<!-- HTML5 shim, for IE6-8 support of HTML5 elements -->
+	<!--[if lt IE 9]>
+		<script src="http://html5shim.googlecode.com/svn/trunk/html5.js"></script>
+	<![endif]-->
+
+	<!-- fav and touch icons -->
+	<link rel="shortcut icon" href="bootDoc/assets/ico/favicon.ico">
+	<link rel="apple-touch-icon-precomposed" sizes="114x114" href="bootDoc/assets/ico/apple-touch-icon-114-precomposed.png">
+	<link rel="apple-touch-icon-precomposed" sizes="72x72" href="bootDoc/assets/ico/apple-touch-icon-72-precomposed.png">
+	<link rel="apple-touch-icon-precomposed" href="bootDoc/assets/ico/apple-touch-icon-57-precomposed.png">
+	
+	<!-- Introduce DDoc settings required by JavaScript -->
+	<script type="text/javascript">
+		var Title = 'transduced.transducers';
+		var SourceRepository = 'http://github.com/QAston/transducers-dlang/tree/master/source';
+		var PackageSeparator = '.';
+	</script>
+	
+	<style type="text/css">
+		.ddoc-icon-variable { background-image: url('bootDoc/ddoc-icons/var.png'); }
+		.ddoc-icon-function { background-image: url('bootDoc/ddoc-icons/func.png'); }
+		.ddoc-icon-property { background-image: url('bootDoc/ddoc-icons/property.png'); }
+		.ddoc-icon-struct { background-image: url('bootDoc/ddoc-icons/struct.png'); }
+		.ddoc-icon-class { background-image: url('bootDoc/ddoc-icons/class.png'); }
+		.ddoc-icon-enum { background-image: url('bootDoc/ddoc-icons/enum.png'); }
+		.ddoc-icon-template { background-image: url('bootDoc/ddoc-icons/template.png'); }
+	</style>
+	</head>
+
+	<body>
+	<!--
+	JavaScript reaps the module list from this element.
+	This is required for the MODULES macro to be reusable
+	in a noscript element later.
+	-->
+	<ul id="module-list-source" class="hidden">
+		
+	<li class="sidebar-list-entry tree-leaf"><a href="transduced.package.html" title="transduced.package"><i class="icon-th"></i>transduced.package</a></li> 
+	<li class="sidebar-list-entry tree-leaf"><a href="transduced.contexts.html" title="transduced.contexts"><i class="icon-th"></i>transduced.contexts</a></li>
+	<li class="sidebar-list-entry tree-leaf"><a href="transduced.core.html" title="transduced.core"><i class="icon-th"></i>transduced.core</a></li>
+	<li class="sidebar-list-entry tree-leaf"><a href="transduced.transducers.html" title="transduced.transducers"><i class="icon-th"></i>transduced.transducers</a></li>
+	<li class="sidebar-list-entry tree-leaf"><a href="transduced.util.html" title="transduced.util"><i class="icon-th"></i>transduced.util</a></li>
+	</ul>
+	
+	<div class="navbar navbar-fixed-top">
+		<div class="navbar-inner">
+			<div class="container-fluid">
+				<a class="btn btn-navbar" data-toggle="collapse" data-target=".nav-collapse">
+					<span class="icon-bar"></span>
+					<span class="icon-bar"></span>
+					<span class="icon-bar"></span>
+				</a>
+				<a class="brand" href="transduced.package.html">Transduced</a>
+				<div class="nav-collapse">
+					<ul class="nav">
+						<li class="active"><a href="transduced.package.html">Reference</a></li>
+					</ul>
+					
+					<form id="gotosymbol" class="navbar-search pull-left hidden">
+						<input type="text" class="search-query" placeholder="Go to symbol in transduced.transducers" data-provide="typeahead" data-items="4">
+					</form>
+					
+					<p class="navbar-text pull-right"><a href="https://github.com/QAston/transducers-dlang/">Github Page</a></p>
+				</div><!--/.nav-collapse -->
+			</div>
+		</div>
+	</div>
+
+	<div class="container-fluid">
+		<div class="row-fluid">
+			<div class="span2">
+				<div class="well sidebar-nav">
+				<ul class="nav nav-list">
+					<li id="module-list" class="nav-header sidebar-list-entry">Modules<li>
+					<noscript>
+						
+	<li class="sidebar-list-entry tree-leaf"><a href="transduced.package.html" title="transduced.package"><i class="icon-th"></i>transduced.package</a></li> 
+	<li class="sidebar-list-entry tree-leaf"><a href="transduced.contexts.html" title="transduced.contexts"><i class="icon-th"></i>transduced.contexts</a></li>
+	<li class="sidebar-list-entry tree-leaf"><a href="transduced.core.html" title="transduced.core"><i class="icon-th"></i>transduced.core</a></li>
+	<li class="sidebar-list-entry tree-leaf"><a href="transduced.transducers.html" title="transduced.transducers"><i class="icon-th"></i>transduced.transducers</a></li>
+	<li class="sidebar-list-entry tree-leaf"><a href="transduced.util.html" title="transduced.util"><i class="icon-th"></i>transduced.util</a></li>
+					</noscript>
+					<li id="symbol-list" class="nav-header sidebar-list-entry hidden">transduced.transducers</li>
+				</ul>
+				</div><!--/.well -->
+			</div><!--/span-->
+			
+			<div class="span10">
+				<div class="row-fluid">
+					<div class="span11">
+						<ul id="module-breadcrumb" class="breadcrumb">
+							<noscript><h1>transduced.transducers</h1></noscript>
+						</ul>
+						
+					</div>
+					<div class="span1 offset11">
+						<a href="transduced.package.html"><img src="bootDoc/assets/img/icon-github.png" alt="Transduced"/></a>
+					</div>
+				</div>
+				<div id="declaration-list">
+					<!-- Generated by Ddoc from ..\source\transduced\transducers.d -->
+<dl><p>Module providing <span class="symbol-target" id="transducers">&nbsp;</span><a class="symbol-link" href="#transducers">transducers</a> - objects encapsulating transformations of sequential processes i.e. map, filter.</p>
+</dl>
+<hr><div class="row-fluid declaration"><h3>auto <span class="symbol-target" id="mapper">&nbsp;</span><a class="symbol-link" href="#mapper">mapper</a>(alias f)() if (isStaticFn!f);
+<br>auto <span class="symbol-target" id="mapper">&nbsp;</span><a class="symbol-link" href="#mapper">mapper</a>(F)(F <i>f</i>);
+</h3></div>
+<div class="declaration-content"><dl><p>Returns a transducer modifying the process by transforming each step input using <span class="inlinecode"><i>f</i></span> function.</p>
+<dt>Examples</dt><dd><pre class="d_code">
+<span class="d_keyword">import</span> std.array;
+<span class="d_keyword">import</span> transduced.contexts;
+
+<span class="d_keyword">auto</span> output = appender!(<span class="d_keyword">int</span>[])();
+[1, 2, 3, 4].into(<u>mapper</u>!((<span class="d_keyword">int</span> x) =&gt; -x), output);
+<span class="d_keyword">assert</span>(output.data == [-1, -2, -3, -4]);
+</pre>
+</dd></dl>
+</div>
+<hr><div class="row-fluid declaration"><h3>auto <span class="symbol-target" id="taker">&nbsp;</span><a class="symbol-link" href="#taker">taker</a>(size_t <i>howMany</i>);
+</h3></div>
+<div class="declaration-content"><dl><p>Returns a transducer modifying the process by forwarding only first <span class="inlinecode"><i>howMany</i></span> step inputs.</p>
+<dt>Examples</dt><dd><pre class="d_code">
+<span class="d_keyword">import</span> std.array;
+<span class="d_keyword">import</span> transduced.contexts;
+
+<span class="d_keyword">auto</span> output = appender!(<span class="d_keyword">int</span>[])();
+[1, 2, 3, 4].into(<u>taker</u>(2), output);
+<span class="d_keyword">assert</span>(output.data == [1, 2]);
+</pre>
+</dd></dl>
+</div>
+<hr><div class="row-fluid declaration"><h3>auto <span class="symbol-target" id="filterer">&nbsp;</span><a class="symbol-link" href="#filterer">filterer</a>(alias pred)() if (isStaticFn!pred);
+<br>auto <span class="symbol-target" id="filterer">&nbsp;</span><a class="symbol-link" href="#filterer">filterer</a>(F)(F <i>pred</i>);
+</h3></div>
+<div class="declaration-content"><dl><p>Returns a transducer modifying the process by forwarding only step inputs satisfying <span class="inlinecode"><i>pred</i></span>.</p>
+<dt>Examples</dt><dd><pre class="d_code">
+<span class="d_keyword">import</span> std.array;
+<span class="d_keyword">import</span> transduced.contexts;
+
+<span class="d_keyword">auto</span> output = appender!(<span class="d_keyword">int</span>[])();
+[1, 2, 3, 4].into(<u>filterer</u>!((<span class="d_keyword">int</span> x) =&gt; x % 2 == 1), output);
+<span class="d_keyword">assert</span>(output.data == [1, 3]);
+</pre>
+</dd></dl>
+</div>
+<hr><div class="row-fluid declaration"><h3>immutable immutable(Flattener) <span class="symbol-target" id="flattener">&nbsp;</span><a class="symbol-link" href="#flattener">flattener</a>;
+<br>struct <span class="symbol-target" id="Flattener">&nbsp;</span><a class="symbol-link" href="#Flattener">Flattener</a>;
+</h3></div>
+<div class="declaration-content"><dl><p>Returns a transducer modifying the process by converting <span class="inlinecode">InputRange</span> inputs to a series of inputs with all <span class="inlinecode">InputRange</span> elements.</p>
+<dt>Examples</dt><dd><pre class="d_code">
+<span class="d_keyword">import</span> std.array;
+<span class="d_keyword">import</span> transduced.contexts;
+
+<span class="d_keyword">auto</span> output = appender!(<span class="d_keyword">int</span>[])();
+[[1, 2], [3, 4]].into(<u>flattener</u>, output);
+<span class="d_keyword">assert</span>(output.data == [1, 2, 3, 4]);
+</pre>
+</dd></dl>
+</div>
+<hr><div class="row-fluid declaration"><h3>auto <span class="symbol-target" id="flatMapper">&nbsp;</span><a class="symbol-link" href="#flatMapper">flatMapper</a>(alias f)() if (isStaticFn!f);
+<br>auto <span class="symbol-target" id="flatMapper">&nbsp;</span><a class="symbol-link" href="#flatMapper">flatMapper</a>(F)(F <i>f</i>);
+</h3></div>
+<div class="declaration-content"><dl><p>Composition of mapper and flattener.</p>
+<dt>Examples</dt><dd><pre class="d_code">
+<span class="d_keyword">import</span> std.array;
+<span class="d_keyword">import</span> transduced.contexts;
+
+<span class="d_keyword">auto</span> output = appender!(<span class="d_keyword">int</span>[])();
+[1, 2, 3, 4].into(<u>flatMapper</u>!((<span class="d_keyword">int</span> x) =&gt; [x, x])(), output);
+<span class="d_keyword">assert</span>(output.data == [1, 1, 2, 2, 3, 3, 4, 4]);
+</pre>
+</dd></dl>
+</div>
+<hr><div class="row-fluid declaration"><h3>auto <span class="symbol-target" id="flusher">&nbsp;</span><a class="symbol-link" href="#flusher">flusher</a>(alias f)() if (isStaticFn!f);
+<br>auto <span class="symbol-target" id="flusher">&nbsp;</span><a class="symbol-link" href="#flusher">flusher</a>(F)(F <i>f</i>);
+</h3></div>
+<div class="declaration-content"><dl><p>Returns a transducer modifying the process by buffering all the input and transforming it using given <span class="inlinecode"><i>f</i></span> function on <i>f</i> <span class="inlinecode">flush</span>.
+</p>
+<p>This function allows one to plug range algorithms into transducers ecosystem.
+Note that this transducer buffers all steps input until <span class="inlinecode">flush</span>, that results in following sideffects:
+	- no steps are done untill flush, so process is not really continuous
+	- internal transducer buffer has to allocate memory for that
+
+</p>
+<dt>Parameters</dt><dd><table class="table table-condensed table-bordered"><tr><td>F <i>f</i></td>
+<td>a function taking an input range, and returning one.
+		The function will be executed on flush with a random access range having all input data accumulated.
+		Returned range will be forwarded to the decorated process.</td></tr>
+</table></dd>
+</dl>
+</div>
+<hr><div class="row-fluid declaration"><h3>auto <span class="symbol-target" id="comp">&nbsp;</span><a class="symbol-link" href="#comp">comp</a>(T1, T...)(auto ref T1 <i>t1</i>, auto ref T <i>args</i>);
+</h3></div>
+<div class="declaration-content"><dl><p>Returns a transducer modifying the process by wrapping it with the composition of given transducers.</p>
+<dt>Examples</dt><dd><pre class="d_code">
+<span class="d_keyword">import</span> std.array;
+<span class="d_keyword">import</span> transduced.contexts;
+
+<span class="d_keyword">auto</span> output = appender!(<span class="d_keyword">int</span>[])();
+[1, 2, 3, 4].into(<u>comp</u>(mapper!((<span class="d_keyword">int</span> x) =&gt; -x), taker(2)), output);
+<span class="d_keyword">assert</span>(output.data == [-1, -2]);
+</pre>
+</dd></dl>
+</div>
+
+
+				</div>
+				
+				<hr>
+				
+				<footer class="pull-left">
+					<p>Page generated with <a href="https://github.com/JakobOvrum/bootDoc">bootDoc</a>.</p>
+				</footer>
+				
+				<footer class="pull-right">
+					<p>&copy; Dariusz Antoniuk 2016</p>
+				</footer>
+			</div>
+		</div>
+	</div><!--/.fluid-container-->
+
+	<!-- Bootstrap javascript
+	================================================== -->
+	<!-- Placed at the end of the document so the pages load faster -->
+	<script src="bootDoc/assets/js/jquery.min.js"></script>
+	<script src="bootDoc/assets/js/bootstrap.min.js"></script>
+	
+	<!-- bootDoc javascript
+	================================================== -->
+	<script src="bootDoc/bootdoc.js"></script>
+	
+	</body>
+</html>
