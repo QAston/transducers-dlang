@@ -18,7 +18,7 @@ mixin template ProcessDecoratorMixin(Decorated) {
 	/++
 	Returns ref to the underlying process struct that's decorated. Do not override.
 	+/
-	pragma(inline, true);
+	pragma(inline, true)
 		ref typeof(process.decoratedProcess()) decoratedProcess() @property {
 			return process.decoratedProcess;
 		}
@@ -27,7 +27,7 @@ mixin template ProcessDecoratorMixin(Decorated) {
 	This method allows to process remaining input and feed it to the wrapped process by calling step, just like step methods do.
 	After all processing is done the decorator should call process on wrapped process.
 	+/
-	pragma(inline, true);
+	pragma(inline, true)
 		void flush() {
 			process.flush();
 		}
@@ -55,7 +55,7 @@ void markTerminatedEarly(Process)(ref Process process) {
 Mixin used to implement common code for all transducible processes.
 +/
 mixin template ProcessMixin() {
-	pragma(inline, true);
+	pragma(inline, true)
 		ref typeof(this) decoratedProcess() {
 			return this;
 		}
