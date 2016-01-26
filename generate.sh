@@ -1,0 +1,1 @@
+rdmd bootDoc/generate.d ../source
