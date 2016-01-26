@@ -7,7 +7,7 @@ TODO: This module documentation should explain the contracts and how to implemen
 +/
 module transduced.core;
 
-import std.range.primitives;
+import std.range;
 import std.array;
 
 /++

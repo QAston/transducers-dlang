@@ -5,7 +5,7 @@ A transducible context is a function or an object which uses decorated sequentia
 +/
 module transduced.contexts;
 
-import std.range.primitives;
+import std.range;
 import std.array;
 import std.container.array;
 import transduced.util;

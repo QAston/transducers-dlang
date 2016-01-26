@@ -5,7 +5,7 @@ module transduced.transducers;
 
 import transduced.util;
 import transduced.core;
-import std.range.primitives;
+import std.range;
 
 // function returning a transducer
 // transducer holds the info about what to do with input, but doesn't know the overall process
