@@ -26,7 +26,7 @@ auto mapper(F)(F f) {
 ---
 +/
 struct StaticFn(alias f)  {
-	pragma(inline, true)
+	pragma(inline, true);
 		auto opCall(T...)(auto ref T args) inout {
 			return f(args);
 		}
