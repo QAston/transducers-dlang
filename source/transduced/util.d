@@ -6,8 +6,9 @@ module transduced.util;
 /++
 Returns true when given static function can be wrapped using $(D StaticFn)
 +/
-template isStaticFn(alias f) {
-	enum bool isStaticFn = __traits(isStaticFunction, f);
+template isStaticFn(alias f)
+{
+    enum bool isStaticFn = __traits(isStaticFunction, f);
 }
 
 /++
@@ -25,9 +26,10 @@ auto mapper(F)(F f) {
 }
 ---
 +/
-struct StaticFn(alias f)  {
-	pragma(inline, true)
-		auto opCall(T...)(auto ref T args) inout {
-			return f(args);
-		}
+struct StaticFn(alias f)
+{
+    pragma(inline, true) auto opCall(T...)(auto ref T args) inout
+    {
+        return f(args);
+    }
 }

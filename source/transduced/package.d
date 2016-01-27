@@ -1,9 +1,9 @@
 /++
-dlang input ranges:
+<h2>dlang input ranges:</h2>
 -pull primitives
 -sequential operations provided using wrapper structures - like map, filter...
 
-output ranges:
+<h2>output ranges:</h2>
 -push primitives
 -no sequential operations provided for those
 
