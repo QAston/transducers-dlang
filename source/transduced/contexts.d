@@ -12,7 +12,7 @@ import transduced.util;
 import transduced.core;
 
 /++
-Returns a lazy range of $(D ElementType) items, each item lazily processed by prodived transducer $(D t)
+Returns a lazy range of $(D ElementType) items, each item is taken from given $(D range) and lazily processed by provided transducer $(D t)
 
 Range element type must be given and cannot be deduced from transducers because transducers are independent of what they decorate, range in this case.
 +/
@@ -21,10 +21,27 @@ template transducerRange(ElementType)
     auto transducerRange(R, Transducer)(R range, Transducer t, size_t initialBufferSize = 1) if (
             isInputRange!R)
     {
-        auto transducerStack = t(RangeProcess!(ElementType)(initialBufferSize));
-        return TransducibleProcessRange!(R, typeof(transducerStack), ElementType)(range,
-            transducerStack);
+        auto process = t(RangeProcess!(ElementType)(initialBufferSize));
+        return TransducibleProcessRange!(R, typeof(process), ElementType)(range,
+            process);
     }
+}
+
+///
+unittest
+{
+    import std.array;
+    import transduced.transducers;
+    auto transducer = comp(taker(2), mapper!minus, mapper!twice);
+
+    auto res = transducerRange!(int)([1, 2, 3, 4], transducer).array();
+    assert(!res.empty);
+    assert(res.front == -2);
+    res.popFront();
+    assert(!res.empty);
+    assert(res.front == -4);
+    res.popFront();
+    assert(res.empty);
 }
 
 private struct RangeProcess(ElementType)
@@ -119,7 +136,7 @@ private struct TransducibleProcessRange(Range, Process, ElementType) if (isInput
 }
 
 /++
-Populates output range $(D to) with contents of input range $(D from) processed by a transducer.
+Populates output range $(D to) with contents of input range $(D from) processed by a transducer $(D t).
 +/
 auto into(R, Transducer, Out)(R from, auto ref Transducer t, Out to) if (isInputRange!R) // can't check for output range because output from transducer is unknown && isOutputRange!(Out, ElementType!Out)
 {
@@ -132,6 +149,18 @@ auto into(R, Transducer, Out)(R from, auto ref Transducer t, Out to) if (isInput
     }
     transducerStack.flush();
     return transducerStack.decoratedProcess().accumulator;
+}
+
+///
+unittest
+{
+    import std.array;
+    import transduced.transducers;
+    auto transducer = comp(taker(2), mapper!minus, mapper!twice);
+    auto output = appender!(int[])();
+
+    [1, 2, 3, 4].into(transducer, output);
+    assert(output.data == [-2, -4]);
 }
 
 private struct IntoProcess(Out)
@@ -149,10 +178,71 @@ private struct IntoProcess(Out)
     }
 }
 
-//wrap output range, put method redirects to step function, has flush method which flushes
-//transduceOutput? pretransduce?
+public struct TransducedSink(Process) {
+    private Process _process;
 
-// wrap std.stdio.file
-// create a stream-like object for file, which has write and flush
+    this(Process process) {
+        _process = process;
+    }
 
-// wrap std.stream...
+    public bool acceptsMore() @property {
+        return !_process.isTerminatedEarly();
+    }
+
+    public void put(InputType)(InputType input) {
+        if (!_process.isTerminatedEarly())
+            _process.step(input);
+    }
+
+    public void flush() {
+        _process.flush();
+    }
+
+    ~this() {
+        flush();
+    }
+}
+
+// transduceSink, transduceTo, transduceOutput, transduceOutputRange?
+/++
+Returns an output range of type TransducedSink which forwards input transformed by transducer $(D t) to output range $(D o).
++/
+auto transduceSink(Transducer, OutputRange)(Transducer t, OutputRange o) {
+    auto process = t(IntoProcess!(OutputRange)(o));
+    return TransducedSink!(typeof(process))(process);
+}
+
+///
+unittest
+{
+    import std.array;
+    import transduced.transducers;
+
+    auto output = appender!(int[])();
+    auto transducedOutput = transduceSink(mapper!((int x) => -x), output);
+    put(transducedOutput, 1);
+    assert(output.data == [-1]);
+    put(transducedOutput, 2);
+    assert(output.data == [-1, -2]);
+    put(transducedOutput, 3);
+    assert(output.data == [-1, -2, -3]);
+    assert(transducedOutput.acceptsMore());
+}
+
+///
+unittest
+{
+    import std.array;
+    import transduced.transducers;
+
+    auto output = appender!(int[])();
+    auto transducedOutput = transduceSink(taker(2), output);
+    put(transducedOutput, 1);
+    assert(transducedOutput.acceptsMore());
+    assert(output.data == [1]);
+    put(transducedOutput, 2);
+    assert(output.data == [1, 2]);
+    put(transducedOutput, 3);
+    assert(output.data == [1, 2]);
+    assert(!transducedOutput.acceptsMore());
+}
