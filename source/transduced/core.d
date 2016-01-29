@@ -1,89 +1,124 @@
 /++
 Module introducing core concepts of the library.
-
-Containing specifications for transducers, transducible processes, transducible contexts and process decorators.
-
-TODO: This module documentation should explain the contracts and how to implement stuff.
 +/
 module transduced.core;
 
 import std.range;
 import std.array;
 
+//todo: isPutter template
+
 /++
-Mixin used to implement common code for all transducible process decorators.
+Mixin used to implement common code for all putter decorators.
+
+Specific putter decorators provide additional capabilities to $(D Putter) by wrapping it and forwarding calls to the decorated $(D putter) object.
+For more information on how decorators work google "Decorator design pattern".
 +/
-mixin template ProcessDecoratorMixin(Decorated)
+mixin template PutterDecoratorMixin(Decorated)
 {
-    private Decorated process;
+    private Decorated putter;
+
     /++
-	Returns ref to the underlying process struct that's decorated. Do not override.
-	+/
-    pragma(inline, true) ref typeof(process.decoratedProcess()) decoratedProcess() @property
+    Forwards to the decorated $(Putter.isAcceptingInput). Do not override.
+    +/
+    pragma(inline, true) bool isAcceptingInput()
     {
-        return process.decoratedProcess;
+        return putter.isAcceptingInput();
     }
     /++
-	ProcessDecorators which do buffering need to override this flush method.
-	This method allows to process remaining input and feed it to the wrapped process by calling step, just like step methods do.
-	After all processing is done the decorator should call process on wrapped process.
+    Forwards to the decorated $(Putter.markNotAcceptingInput). Do not override.
+    +/
+    pragma(inline, true) void markNotAcceptingInput()
+    {
+        putter.markNotAcceptingInput();
+    }
+    /++
+	PutterDecorators which do buffering need to override this method. By default forwards to the decorated $(Putter.flush).
+
+	This method should $(D Putter.put) any buffered data into the decorated $(D putter).
+	After all processing is done the decorator should forward to the decorated $(D Putter.flush).
 	+/
     pragma(inline, true) void flush()
     {
-        process.flush();
+        putter.flush();
     }
-}
-/++
-Returns true when process is marked for early termination.
 
-Transducible context should check for this after every step, and if true stop calling $(D step), call $(D flush) and finish.
-+/
-bool isTerminatedEarly(Process)(ref Process process)
-{
-    return process.decoratedProcess().isTerminatedEarly();
-}
-
-/++
-Marks underlying process for early termination.
-
-Use inside ProcessDecorator.step() method prevent the transducible context from feeding the process more input.
-When marked, no new input can be fed to the process using $(D step), outside of $(D flush) method.
-+/
-void markTerminatedEarly(Process)(ref Process process)
-{
-    process.decoratedProcess().markTerminatedEarly();
+    /++
+    Forwards to the decorated $(Putter.to). Do not override.
+    +/
+    pragma(inline, true) auto to() @property
+    {
+        return putter.to();
+    }
 }
 
 /++
-Mixin used to implement common code for all transducible processes.
+Wraps an output range + put function in a struct providing early termination, buffering, and flushing.
 +/
-mixin template ProcessMixin()
+public struct Putter(OutputRange)
 {
-    pragma(inline, true) ref typeof(this) decoratedProcess()
+    private OutputRange _to;
+    private bool _acceptingInput;
+    this(OutputRange to)
     {
-        return this;
+        this._acceptingInput = true;
+        this._to = to;
     }
 
-    private bool terminatedEarly;
-    bool isTerminatedEarly() @property
+    /++
+    Put the given $(D input) into the $(D Putter.to) output range.
+    
+    Advances the process represented by an output range by a single step.
+    +/
+    void put(InputType)(InputType input)
     {
-        return terminatedEarly;
+        std.range.put(_to, input);
     }
 
-    void markTerminatedEarly()
+    /++
+    Returns true when putter is no longer accepting input.
+
+    Code using putters should check this after every step, and if false stop calling $(D Putter.put), call $(D Putter.flush) and finish.
+    +/
+    bool isAcceptingInput()
     {
-        terminatedEarly = true;
+        return _acceptingInput;
     }
-    // could be called multiple times
+
+    /++
+    Mark putter to not accept input anymore.
+
+    Use inside $(D PutterDecorator.put) method to signal that this putter won't accept any more external input.
+    When marked, no new input can be fed to the process using $(D Putter.put), outside of $(D Putter.flush) method.
+    +/
+    void markNotAcceptingInput()
+    {
+        _acceptingInput = false;
+    }
+
+    /++
+    Flushes any input buffered so far by PutterDecorators using $(Putter.put).
+
+    Called when finished $(D Putter.put)ting.
+	+/
     void flush()
     {
     }
+
+    /++
+    Returns the output range that's being $(D std.range.put) input into by this $(D Putter).
+    +/
+    OutputRange to() @property
+    {
+        return _to;
+    }
 }
 
-interface VirtualProcess(T)
+private interface IPutter(OutputRange, InputType)
 {
-    void step(T elem);
+    void put(InputType input);
     void flush();
-    bool isTerminatedEarly() @property;
-    void markTerminatedEarly();
+    bool isAcceptingInput();
+    void markNotAcceptingInput();
+    OutputRange to() @property;
 }

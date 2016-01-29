@@ -29,6 +29,6 @@ TODO: this module should contain usage examples for what's already implemented
 +/
 module transduced;
 
-public import transduced.contexts;
+public import transduced.range;
 public import transduced.core;
 public import transduced.transducers;
