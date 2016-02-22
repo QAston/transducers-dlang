@@ -10,17 +10,16 @@ import transduced.util;
 import transduced.core;
 
 /++
-Returns a lazy range of $(D ElementType) items, each item is taken from given $(D range) and lazily puttered by provided transducer $(D t)
+Returns a lazy range of $(D ElementType) items, each item is taken from given $(D inputRange) and lazily puttered by provided transducer $(D t)
 
 Range element type must be given and cannot be deduced from transducers because transducers are independent of what they decorate, range in this case.
 +/
-auto transducerRange(ElementType, R, Transducer)(R range, Transducer t, size_t initialBufferSize = 1) if (
+auto transduceSource(ElementType, R, Transducer)(R inputRange, Transducer t, size_t initialBufferSize = 1) if (
         isInputRange!R)
 {
     auto buffer = refCountedPutterBuffer!ElementType();
     auto putter = t(Putter!(typeof(buffer))(buffer));
-    return TransduciblePutterRange!(R, typeof(putter), ElementType)(range,
-        putter);
+    return TransducedSink!(R, typeof(putter), ElementType)(inputRange, putter);
 }
 
 ///
@@ -28,9 +27,10 @@ unittest
 {
     import std.array;
     import transduced.transducers;
+
     auto transducer = comp(taker(2), mapper!minus, mapper!twice);
 
-    auto res = transducerRange!(int)([1, 2, 3, 4], transducer).array();
+    auto res = transduceSource!(int)([1, 2, 3, 4], transducer).array();
     assert(!res.empty);
     assert(res.front == -2);
     res.popFront();
@@ -40,7 +40,7 @@ unittest
     assert(res.empty);
 }
 
-private struct TransduciblePutterRange(Range, Putter, ElementType) if (isInputRange!Range)
+private struct TransducedSink(Range, Putter, ElementType) if (isInputRange!Range)
 {
     import std.traits : Unqual;
 
@@ -122,6 +122,7 @@ unittest
 {
     import std.array;
     import transduced.transducers;
+
     auto transducer = comp(taker(2), mapper!minus, mapper!twice);
     auto output = appender!(int[])();
 
@@ -129,32 +130,37 @@ unittest
     assert(output.data == [-2, -4]);
 }
 
-public struct TransducedSink(Putter) {
+public struct TransducedSink(Putter)
+{
     private Putter _putter;
 
-    this(Putter putter) {
+    this(Putter putter)
+    {
         _putter = putter;
     }
 
-    public bool isAcceptingInput() @property {
+    public bool isAcceptingInput() @property
+    {
         return _putter.isAcceptingInput();
     }
 
-    public void put(InputType)(InputType input) {
+    public void put(InputType)(InputType input)
+    {
         if (_putter.isAcceptingInput())
             _putter.put(input);
     }
 
-    public void flush() {
+    public void flush()
+    {
         _putter.flush();
     }
 }
 
-// transduceSink, transduceTo, transduceOutput, transduceOutputRange?
 /++
 Returns an output range of type TransducedSink which forwards input transformed by transducer $(D t) to output range $(D o).
 +/
-auto transduceSink(Transducer, OutputRange)(Transducer t, OutputRange o) {
+auto transduceSink(Transducer, OutputRange)(Transducer t, OutputRange o)
+{
     auto putter = t(Putter!(OutputRange)(o));
     return TransducedSink!(typeof(putter))(putter);
 }

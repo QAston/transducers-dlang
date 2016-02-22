@@ -254,13 +254,13 @@ Returns a transducer modifying the putter by buffering all the input and transfo
 
 This function allows one to plug range algorithms into transducers ecosystem.
 Note that this transducer buffers all puts input until $(D flush), that results in following sideffects:
-	- no puts are done untill flush, so putter is not really continuous
-	- internal transducer buffer has to allocate memory for that 
+    - no puts are done untill flush, so putter is not really continuous
+    - internal transducer buffer has to allocate memory for that 
 
 Params:
-	f = a function taking an input range, and returning one.
-		The function will be executed on flush with a random access range having all input data accumulated. 
-		Returned range will be forwarded to the decorated putter.
+    f = a function taking an input range, and returning one.
+        The function will be executed on flush with a random access range having all input data accumulated. 
+        Returned range will be forwarded to the decorated putter.
 +/
 auto flusher(alias f)() if (isStaticFn!f)
 {
@@ -280,20 +280,20 @@ auto flusher(F)(F f)
         auto opCall(Decorated)(auto ref Decorated putter)
         {
             /*
-			static struct PutterDecorator {
-				mixin PutterDecoratorMixin!(Decorated);
-				private F f;
-				this(Decorated putter, F f) {
-					this.f = f;
-					this.putter = putter;
-				}
-				void put(T) (auto ref T elem) {
-					if (f(elem))
-						putter.put(elem);
-				}
-			}
-			return PutterDecorator(putter, f);
-			*/
+            static struct PutterDecorator {
+                mixin PutterDecoratorMixin!(Decorated);
+                private F f;
+                this(Decorated putter, F f) {
+                    this.f = f;
+                    this.putter = putter;
+                }
+                void put(T) (auto ref T elem) {
+                    if (f(elem))
+                        putter.put(elem);
+                }
+            }
+            return PutterDecorator(putter, f);
+            */
         }
     }
 
@@ -404,13 +404,13 @@ version (unittest)
     {
         auto transducer = comp(taker(2), mapper!minus, mapper!twice);
 
-        auto res = transducerRange!(int)([1, 2, 3, 4], transducer).array();
+        auto res = transduceSource!(int)([1, 2, 3, 4], transducer).array();
         assert(res == [-2, -4]);
     }
 
     unittest
     {
-        auto res = transducerRange!(int)([[1, 2, 3, 4]], flattener).array();
+        auto res = transduceSource!(int)([[1, 2, 3, 4]], flattener).array();
         assert(res == [1, 2, 3, 4]);
     }
 
@@ -421,7 +421,7 @@ version (unittest)
 
     unittest
     {
-        auto res = transducerRange!(int)([1, 2, 3, 4], filterer!even()).array();
+        auto res = transduceSource!(int)([1, 2, 3, 4], filterer!even()).array();
         assert(res == [2, 4]);
     }
 
@@ -451,14 +451,14 @@ version (unittest)
 
     unittest
     {
-        auto res = transducerRange!(int)([1, 2, 3, 4], flatMapper!duplicate()).array();
+        auto res = transduceSource!(int)([1, 2, 3, 4], flatMapper!duplicate()).array();
         assert(res == [1, 1, 2, 2, 3, 3, 4, 4]);
     }
 
     unittest
     {
         auto dupper = Dup!int(2);
-        auto res = transducerRange!(int)([1, 2, 3, 4], flatMapper(dupper)).array();
+        auto res = transduceSource!(int)([1, 2, 3, 4], flatMapper(dupper)).array();
         assert(res == [1, 1, 2, 2, 3, 3, 4, 4]);
     }
 
@@ -466,7 +466,7 @@ version (unittest)
     {
         auto dupper = Dup!int(2);
         int a = 2;
-        auto res = transducerRange!(int)([1, 2, 3, 4], flatMapper((int x) => [a, a])).array();
+        auto res = transduceSource!(int)([1, 2, 3, 4], flatMapper((int x) => [a, a])).array();
         assert(res == [2, 2, 2, 2, 2, 2, 2, 2]);
     }
 }

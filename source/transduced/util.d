@@ -40,7 +40,7 @@ A queue like buffer that's first filled up with put, then depopulated using remo
 Keeps memory allocated until desctruction
 Should take param how large initial allocation should be.
 +/
-struct PutterBuffer (T, Allocator)
+struct PutterBuffer(T, Allocator)
 {
     private Allocator _allocator;
     private T[] _array;
@@ -49,16 +49,19 @@ struct PutterBuffer (T, Allocator)
 
     @disable this(this);
 
-    this(Allocator allocator) {
+    this(Allocator allocator)
+    {
         _allocator = allocator;
         _array = _allocator.makeArray(1, T.init);
     }
 
-    void put(T t) {
+    void put(T t)
+    {
         assert(_begin == 0); // only allow insertion if nothing removed from the buffer
         assert(_end <= _array.length);
-        
-        if(_end == _array.length) {
+
+        if (_end == _array.length)
+        {
             bool expanded = expandArray(_allocator, _array, 1);
             assert(expanded);
         }
@@ -66,33 +69,39 @@ struct PutterBuffer (T, Allocator)
         ++_end;
     }
 
-    T removeFront() {
+    T removeFront()
+    {
         assert(!empty());
 
         T t = _array[_begin];
-        
-        static if (hasElaborateDestructor!(typeof(_array[0]))) {
+
+        static if (hasElaborateDestructor!(typeof(_array[0])))
+        {
             destroy(_array[_begin]);
         }
         _begin++;
 
-        if (_begin == _end) {
+        if (_begin == _end)
+        {
             _begin = _end = 0;
         }
 
         return t;
     }
 
-    size_t length() {
+    size_t length()
+    {
         assert(_end >= _begin);
         return _end - _begin;
     }
-    
-    bool empty() @property {
+
+    bool empty() @property
+    {
         return _begin == _end;
     }
 
-    void clear() {
+    void clear()
+    {
         static if (hasElaborateDestructor!(typeof(_array[0])))
         {
             foreach (ref e; _array[_begin .. _end])
@@ -104,28 +113,35 @@ struct PutterBuffer (T, Allocator)
         _end = 0;
     }
 
-    T[] data() @property {
+    T[] data() @property
+    {
         return _array[_begin .. _end];
     }
-    ~this() {
-        if(_array !is null) {
+
+    ~this()
+    {
+        if (_array !is null)
+        {
             _allocator.dispose(_array);
             _array = null;
         }
     }
 }
 
-auto refCountedPutterBuffer(T)() {
+auto refCountedPutterBuffer(T)()
+{
     import std.typecons;
     import std.algorithm;
-    
-    return RefCounted!(PutterBuffer!(T, typeof(theAllocator())), RefCountedAutoInitialize.no)(theAllocator());
+
+    return RefCounted!(PutterBuffer!(T, typeof(theAllocator())), RefCountedAutoInitialize.no)(
+        theAllocator());
 }
 
-
-unittest {
+unittest
+{
     import std.range;
-    static assert (isOutputRange!(PutterBuffer!(int, typeof(theAllocator())), int));
+
+    static assert(isOutputRange!(PutterBuffer!(int, typeof(theAllocator())), int));
 
     auto a = refCountedPutterBuffer!int();
     assert(a.empty());

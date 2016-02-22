@@ -113,12 +113,3 @@ public struct Putter(OutputRange)
         return _to;
     }
 }
-
-private interface IPutter(OutputRange, InputType)
-{
-    void put(InputType input);
-    void flush();
-    bool isAcceptingInput();
-    void markNotAcceptingInput();
-    OutputRange to() @property;
-}
