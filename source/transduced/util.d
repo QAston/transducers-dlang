@@ -3,6 +3,38 @@ Utility module for implementing transducers.
 +/
 module transduced.util;
 import std.experimental.allocator;
+import std.algorithm;
+
+/++
+Returns true if type T is copyable.
++/
+enum isCopyable (T) = is(typeof((T a) => {T b = a;}));
+
+/++
+Identity for copyable, non-copyable params moved using $(D std.algorithm.move)
++/
+pragma(inline, true)
+auto copyOrMove(T)(auto ref T t) {
+    static if (isCopyable!T) {
+        return t;
+    }
+    else {
+        return move(t);
+    }
+}
+
+version(unittest){
+    struct S {
+        int a;
+        @disable this(this);
+    }
+    struct U {
+        S s;
+    }
+    static assert(!isCopyable!S);
+    static assert(!isCopyable!U);
+    static assert(isCopyable!int);
+}
 
 /++
 Returns true when given static function can be wrapped using $(D StaticFn)
@@ -32,6 +64,17 @@ struct StaticFn(alias f)
     pragma(inline, true) auto opCall(T...)(auto ref T args) inout
     {
         return f(args);
+    }
+}
+
+enum isPutter(T) = true;
+
+enum isPutterBuffer(T) = true;
+
+version (unittest)
+{
+    void testPutterBuffer()
+    {
     }
 }
 

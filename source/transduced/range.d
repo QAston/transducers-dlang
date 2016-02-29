@@ -28,9 +28,7 @@ unittest
     import std.array;
     import transduced.transducers;
 
-    auto transducer = comp(taker(2), mapper!minus, mapper!twice);
-
-    auto res = transduceSource!(int)([1, 2, 3, 4], transducer).array();
+    auto res = transduceSource!(int)([1, 2, 3, 4], comp(taker(2), mapper!minus, mapper!twice)).array();
     assert(!res.empty);
     assert(res.front == -2);
     res.popFront();
@@ -104,7 +102,7 @@ private struct TransducedSink(Range, Putter, ElementType) if (isInputRange!Range
 /++
 Populates output range $(D to) with contents of input range $(D from) puttered by a transducer $(D t).
 +/
-auto into(R, Transducer, Out)(R from, auto ref Transducer t, Out to) if (isInputRange!R)
+auto into(R, Transducer, Out)(R from, Transducer t, Out to) if (isInputRange!R)
 {
     auto transducerStack = t(Putter!(Out)(to));
     foreach (el; from)
@@ -123,10 +121,9 @@ unittest
     import std.array;
     import transduced.transducers;
 
-    auto transducer = comp(taker(2), mapper!minus, mapper!twice);
     auto output = appender!(int[])();
 
-    [1, 2, 3, 4].into(transducer, output);
+    [1, 2, 3, 4].into(comp(taker(2), mapper!minus, mapper!twice), output);
     assert(output.data == [-2, -4]);
 }
 

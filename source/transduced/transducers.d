@@ -6,6 +6,7 @@ module transduced.transducers;
 import transduced.util;
 import transduced.core;
 import std.range;
+import std.algorithm : move;
 
 // function returning a transducer
 // transducer holds the info about what to do with input, but doesn't know the overall putter
@@ -38,7 +39,7 @@ auto mapper(F)(F f)
             {
                 mixin PutterDecoratorMixin!(Decorated);
                 private F f;
-                this(Decorated putter, F f)
+                private this(Decorated putter, F f)
                 {
                     this.f = f;
                     this.putter = putter;
@@ -90,7 +91,7 @@ auto taker(size_t howMany)
             {
                 mixin PutterDecoratorMixin!(Decorated);
                 private size_t howMany;
-                this(Decorated putter, size_t howMany)
+                private this(Decorated putter, size_t howMany)
                 {
                     this.putter = putter;
                     this.howMany = howMany;
@@ -150,7 +151,7 @@ auto filterer(F)(F pred)
             {
                 mixin PutterDecoratorMixin!(Decorated);
                 private F f;
-                this(Decorated putter, F f)
+                private this(Decorated putter, F f)
                 {
                     this.f = f;
                     this.putter = putter;
@@ -196,7 +197,7 @@ static struct Flattener
         static struct PutterDecorator
         {
             mixin PutterDecoratorMixin!(Decorated);
-            this(Decorated putter)
+            private this(Decorated putter)
             {
                 this.putter = putter;
             }
@@ -228,11 +229,13 @@ unittest
 /++
 Composition of mapper and flattener.
 +/
+pragma(inline, true)
 auto flatMapper(alias f)() if (isStaticFn!f)
 {
     return flatMapper(StaticFn!(f).init);
 }
 /// ditto
+pragma(inline, true)
 auto flatMapper(F)(F f)
 {
     return comp(mapper(f), flattener);
@@ -252,7 +255,7 @@ unittest
 /++
 Returns a transducer modifying the putter by buffering all the input and transforming it using given $(D f) function on f $(D flush).
 
-This function allows one to plug range algorithms into transducers ecosystem.
+This function allows one to plug input range algorithms into transducers ecosystem.
 Note that this transducer buffers all puts input until $(D flush), that results in following sideffects:
     - no puts are done untill flush, so putter is not really continuous
     - internal transducer buffer has to allocate memory for that 
@@ -272,7 +275,7 @@ auto flusher(F)(F f)
     static struct Flusher
     {
         private F f;
-        this(F f)
+        private this(F f)
         {
             this.f = f;
         }
@@ -303,19 +306,26 @@ auto flusher(F)(F f)
 /++
 Returns a transducer modifying the putter by wrapping it with the composition of given transducers.
 +/
-auto comp(T1, T...)(auto ref T1 t1, auto ref T args)
+pragma(inline, true)
+auto comp(T1, T...)(T1 t1, T args)
+{
+    return compImpl(t1, args);
+}
+
+pragma(inline, true)
+auto compImpl(T1, T...)(auto ref T1 t1, auto ref T args)
 {
     static if (T.length == 0)
     {
-        return args[0];
+        return t1;
     }
     else static if (T.length == 1)
     {
-        return Composer!(T1, T[0])(t1, args[0]);
+        return Composer!(T1, T[0])(copyOrMove(t1), copyOrMove(args[0]));
     }
     else
     {
-        return comp(t1, comp(args));
+        return compImpl(t1, compImpl(args));
     }
 }
 
@@ -334,10 +344,25 @@ private struct Composer(T, U)
 {
     private T t;
     private U u;
-    this(T t, U u)
+    
+    pragma(inline, true) private this(T t, U u)
     {
-        this.t = t;
-        this.u = u;
+        static if (isCopyable!T) {
+            this.t = t;
+        }
+        else {
+            move(t, this.t);
+        }
+        static if (isCopyable!U) {
+            this.u = u;
+        }
+        else {
+            move(u, this.u);
+        }
+    }
+
+    static if (!isCopyable!T || !isCopyable!U) {
+        @disable this(this);
     }
 
     auto opCall(Decorated)(auto ref Decorated next)
@@ -361,16 +386,14 @@ version (unittest)
     {
 
         int[] ar = new int[](4);
-        auto transducer = mapper!(minus);
-        [1, 2, 3, 4].into(transducer, ar);
+        [1, 2, 3, 4].into(mapper!(minus), ar);
         assert(ar == [-1, -2, -3, -4]);
     }
 
     unittest
     {
         int[] ar = new int[](4);
-        auto transducer = taker(2);
-        [1, 2, 3, 4].into(transducer, ar);
+        [1, 2, 3, 4].into(taker(2), ar);
         assert(ar == [1, 2, 0, 0]);
     }
 
@@ -378,9 +401,7 @@ version (unittest)
     {
         int[] ar = new int[](4);
 
-        auto transducer = comp(taker(2), mapper!minus);
-
-        [1, 2, 3, 4].into(transducer, ar);
+        [1, 2, 3, 4].into(comp(taker(2), mapper!minus), ar);
         assert(ar == [-1, -2, 0, 0]);
     }
 
@@ -394,17 +415,13 @@ version (unittest)
 
         int[] ar = new int[](4);
 
-        auto transducer = comp(taker(2), mapper!minus, mapper!twice);
-
-        [1, 2, 3, 4].into(transducer, ar);
+        [1, 2, 3, 4].into(comp(taker(2), mapper!minus, mapper!twice), ar);
         assert(ar == [-2, -4, 0, 0]);
     }
 
     unittest
     {
-        auto transducer = comp(taker(2), mapper!minus, mapper!twice);
-
-        auto res = transduceSource!(int)([1, 2, 3, 4], transducer).array();
+        auto res = transduceSource!(int)([1, 2, 3, 4], comp(taker(2), mapper!minus, mapper!twice)).array();
         assert(res == [-2, -4]);
     }
 
