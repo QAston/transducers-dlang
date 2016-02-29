@@ -3,7 +3,7 @@ Utility module for implementing transducers.
 +/
 module transduced.util;
 import std.experimental.allocator;
-import std.algorithm;
+import std.algorithm : move;
 
 /++
 Returns true if type T is copyable.
@@ -11,15 +11,18 @@ Returns true if type T is copyable.
 enum isCopyable (T) = is(typeof((T a) => {T b = a;}));
 
 /++
-Identity for copyable, non-copyable params moved using $(D std.algorithm.move)
+Prepares lvalues of copyable and non-copyable types for being forwarded to function calls. For copyable types this is a no-op.
+For non-copyable types returns result of calling $(D std.algorithm.move), which copies from given $(D src) into an rvalue, and resets $(D src) using init.
+
+Rvalues are forwared in D regardless of copyability.
 +/
 pragma(inline, true)
-auto copyOrMove(T)(auto ref T t) {
+auto forwardLvalue(T)(ref T src) {
     static if (isCopyable!T) {
-        return t;
+        return src;
     }
     else {
-        return move(t);
+        return move(src);
     }
 }
 
@@ -34,6 +37,20 @@ version(unittest){
     static assert(!isCopyable!S);
     static assert(!isCopyable!U);
     static assert(isCopyable!int);
+    int requiresForward(S s) {
+        return s.a;
+    }
+    int requiresForward(int a){
+        return a;
+    }
+}
+
+unittest {
+    S s;
+    s.a = 2;
+    assert(requiresForward(forwardLvalue(s)) == 2);
+    int a = 3;
+    assert(requiresForward(forwardLvalue(a)) == 3);
 }
 
 /++
@@ -66,8 +83,10 @@ struct StaticFn(alias f)
         return f(args);
     }
 }
-
+// TODO: implement those
 enum isPutter(T) = true;
+
+enum isTransducer(T) = true; // TODO tests for work with non-copyable putters
 
 enum isPutterBuffer(T) = true;
 
@@ -171,13 +190,9 @@ struct PutterBuffer(T, Allocator)
     }
 }
 
-auto refCountedPutterBuffer(T)()
+auto putterBuffer(T)()
 {
-    import std.typecons;
-    import std.algorithm;
-
-    return RefCounted!(PutterBuffer!(T, typeof(theAllocator())), RefCountedAutoInitialize.no)(
-        theAllocator());
+    return PutterBuffer!(T, typeof(theAllocator()))(theAllocator());
 }
 
 unittest
@@ -186,7 +201,7 @@ unittest
 
     static assert(isOutputRange!(PutterBuffer!(int, typeof(theAllocator())), int));
 
-    auto a = refCountedPutterBuffer!int();
+    auto a = putterBuffer!int();
     assert(a.empty());
     put(a, 3);
     put(a, 5);

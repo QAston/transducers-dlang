@@ -5,6 +5,7 @@ module transduced.core;
 
 import std.range;
 import std.array;
+import transduced.util;
 
 //todo: isPutter template
 
@@ -46,7 +47,7 @@ mixin template PutterDecoratorMixin(Decorated)
     /++
     Forwards to the decorated $(Putter.to). Do not override.
     +/
-    pragma(inline, true) auto to() @property
+    pragma(inline, true) ref auto to() @property
     {
         return putter.to();
     }
@@ -62,7 +63,7 @@ public struct Putter(OutputRange)
     this(OutputRange to)
     {
         this._acceptingInput = true;
-        this._to = to;
+        this._to = forwardLvalue(to);
     }
 
     /++
@@ -108,7 +109,7 @@ public struct Putter(OutputRange)
     /++
     Returns the output range that's being $(D std.range.put) input into by this $(D Putter).
     +/
-    OutputRange to() @property
+    ref OutputRange to() @property
     {
         return _to;
     }

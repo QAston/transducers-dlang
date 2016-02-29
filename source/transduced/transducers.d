@@ -9,7 +9,7 @@ import std.range;
 import std.algorithm : move;
 
 // function returning a transducer
-// transducer holds the info about what to do with input, but doesn't know the overall putter
+// transducer holds the info about what to do with input, but doesn't know the overall job
 // opCall applies the transducer to given putter
 // can be shared
 /++
@@ -22,7 +22,7 @@ auto mapper(alias f)() if (isStaticFn!f)
 /// ditto
 auto mapper(F)(F f)
 {
-    // transducers create an object which apply the given job description to given TransduciblePutter
+    // transducers create an object which apply the given job description to given Putter
     // the created objs are used privately
     // type specialization cannot be done at runtime, so templates needed
     static struct Mapper
@@ -30,19 +30,20 @@ auto mapper(F)(F f)
         private F f;
         this(F f)
         {
-            this.f = f;
+            this.f = forwardLvalue(f);
         }
+        @disable this(this);
 
-        auto opCall(Decorated)(auto ref Decorated putter)
-        { // putter is a TransduciblePutter to decorate, possibly already decorated
+        auto opCall(Decorated)(Decorated putter)
+        {
             static struct PutterDecorator
             {
                 mixin PutterDecoratorMixin!(Decorated);
                 private F f;
                 private this(Decorated putter, F f)
                 {
-                    this.f = f;
-                    this.putter = putter;
+                    this.f = forwardLvalue(f);
+                    this.putter = forwardLvalue(putter);
                 }
 
                 void put(T)(auto ref T elem)
@@ -51,11 +52,11 @@ auto mapper(F)(F f)
                 }
             }
 
-            return PutterDecorator(putter, f);
+            return PutterDecorator(forwardLvalue(putter), forwardLvalue(f));
         }
     }
 
-    return Mapper(f);
+    return Mapper(forwardLvalue(f));
 }
 
 ///
@@ -85,7 +86,7 @@ auto taker(size_t howMany)
             this.howMany = howMany;
         }
 
-        auto opCall(Decorated)(auto ref Decorated putter)
+        auto opCall(Decorated)(Decorated putter)
         {
             static struct PutterDecorator
             {
@@ -93,7 +94,7 @@ auto taker(size_t howMany)
                 private size_t howMany;
                 private this(Decorated putter, size_t howMany)
                 {
-                    this.putter = putter;
+                    this.putter = forwardLvalue(putter);
                     this.howMany = howMany;
                 }
 
@@ -110,7 +111,7 @@ auto taker(size_t howMany)
                 }
             }
 
-            return PutterDecorator(putter, howMany);
+            return PutterDecorator(forwardLvalue(putter), howMany);
         }
     }
 
@@ -142,10 +143,10 @@ auto filterer(F)(F pred)
         private F f;
         this(F f)
         {
-            this.f = f;
+            this.f = forwardLvalue(f);
         }
 
-        auto opCall(Decorated)(auto ref Decorated putter)
+        auto opCall(Decorated)(Decorated putter)
         {
             static struct PutterDecorator
             {
@@ -153,8 +154,8 @@ auto filterer(F)(F pred)
                 private F f;
                 private this(Decorated putter, F f)
                 {
-                    this.f = f;
-                    this.putter = putter;
+                    this.f = forwardLvalue(f);
+                    this.putter = forwardLvalue(putter);
                 }
 
                 void put(T)(auto ref T elem)
@@ -164,11 +165,11 @@ auto filterer(F)(F pred)
                 }
             }
 
-            return PutterDecorator(putter, f);
+            return PutterDecorator(forwardLvalue(putter), forwardLvalue(f));
         }
     }
 
-    return Filterer(pred);
+    return Filterer(forwardLvalue(pred));
 }
 
 ///
@@ -192,14 +193,14 @@ immutable(Flattener) flattener;
 /// ditto
 static struct Flattener
 {
-    auto opCall(Decorated)(auto ref Decorated putter) inout
+    auto opCall(Decorated)(Decorated putter) inout
     {
         static struct PutterDecorator
         {
             mixin PutterDecoratorMixin!(Decorated);
             private this(Decorated putter)
             {
-                this.putter = putter;
+                this.putter = forwardLvalue(putter);
             }
 
             void put(R)(auto ref R elem) if (isInputRange!R)
@@ -211,7 +212,7 @@ static struct Flattener
             }
         }
 
-        return PutterDecorator(putter);
+        return PutterDecorator(forwardLvalue(putter));
     }
 }
 
@@ -238,7 +239,7 @@ auto flatMapper(alias f)() if (isStaticFn!f)
 pragma(inline, true)
 auto flatMapper(F)(F f)
 {
-    return comp(mapper(f), flattener);
+    return comp(mapper(forwardLvalue(f)), flattener);
 }
 
 ///
@@ -321,7 +322,7 @@ auto compImpl(T1, T...)(auto ref T1 t1, auto ref T args)
     }
     else static if (T.length == 1)
     {
-        return Composer!(T1, T[0])(copyOrMove(t1), copyOrMove(args[0]));
+        return Composer!(T1, T[0])(forwardLvalue(t1), forwardLvalue(args[0]));
     }
     else
     {
@@ -347,27 +348,13 @@ private struct Composer(T, U)
     
     pragma(inline, true) private this(T t, U u)
     {
-        static if (isCopyable!T) {
-            this.t = t;
-        }
-        else {
-            move(t, this.t);
-        }
-        static if (isCopyable!U) {
-            this.u = u;
-        }
-        else {
-            move(u, this.u);
-        }
+        this.t = forwardLvalue(t);
+        this.u = forwardLvalue(u);
     }
 
-    static if (!isCopyable!T || !isCopyable!U) {
-        @disable this(this);
-    }
-
-    auto opCall(Decorated)(auto ref Decorated next)
+    auto opCall(Decorated)(Decorated next)
     {
-        return t(u(next));
+        return t(u(forwardLvalue(next)));
     }
 }
 
