@@ -15,12 +15,11 @@ Returns a lazy range of $(D ElementType) items, each item is taken from given $(
 
 Range element type must be given and cannot be deduced from transducers because transducers are independent of what they decorate, range in this case.
 +/
-auto transduceSource(ElementType, R, Transducer)(R inputRange, Transducer t, size_t initialBufferSize = 1) if (
-        isInputRange!R)
+auto transduceSource(ElementType, R, Transducer)(R inputRange, Transducer t) if (isInputRange!R)
 {
     alias bufferType = typeof(putterBuffer!ElementType());
-    alias putterType = typeof(t(Putter!(bufferType)(putterBuffer!ElementType())));
-    return TransducedSource!(R, putterType, ElementType)(inputRange, t(Putter!(bufferType)(putterBuffer!ElementType())));
+    alias putterType = typeof(t(Putter!(ElementType, bufferType)(putterBuffer!ElementType())));
+    return TransducedSource!(R, putterType, ElementType)(inputRange, t(Putter!(ElementType, bufferType)(putterBuffer!ElementType())));
 }
 
 ///
@@ -73,7 +72,7 @@ private struct TransducedSource(Range, Putter, ElementType) if (isInputRange!Ran
 
     this(R r, Putter putter)
     {
-        _putter = forwardLvalue(putter);
+        _putter = own(putter);
         _input = r;
         nextBufferValue();
     }
@@ -122,9 +121,9 @@ private struct TransducedSource(Range, Putter, ElementType) if (isInputRange!Ran
 /++
 Populates output range $(D to) with contents of input range $(D from) transformed by transducer $(D t).
 +/
-auto into(R, Transducer, Out)(R from, Transducer t, Out to) if (isInputRange!R)
+auto into(ElementType, R, Transducer, Out)(R from, Transducer t, Out to) if (isInputRange!R)
 {
-    auto transducerStack = t(Putter!(Out)(to));
+    auto transducerStack = t(Putter!(ElementType, Out)(to));
     foreach (el; from)
     {
         transducerStack.put(el);
@@ -143,7 +142,7 @@ unittest
 
     auto output = appender!(int[])();
 
-    [1, 2, 3, 4].into(comp(taker(2), mapper!minus, mapper!twice), output);
+    [1, 2, 3, 4].into!(int)(comp(taker(2), mapper!minus, mapper!twice), output);
     assert(output.data == [-2, -4]);
 }
 
@@ -153,7 +152,7 @@ public struct TransducedSink(Putter)
 
     this(Putter putter)
     {
-        _putter = forwardLvalue(putter);
+        _putter = own(putter);
     }
 
     public bool isAcceptingInput() @property
@@ -176,10 +175,10 @@ public struct TransducedSink(Putter)
 /++
 Returns an output range of type TransducedSink which forwards input transformed by transducer $(D t) to output range $(D o).
 +/
-auto transduceSink(Transducer, OutputRange)(Transducer t, OutputRange o)
+auto transduceSink(ElementType, Transducer, OutputRange)(Transducer t, OutputRange o)
 {
-    alias putterType = typeof(t(Putter!(OutputRange)(o)));
-    return TransducedSink!(putterType)(t(Putter!(OutputRange)(o)));
+    alias putterType = typeof(t(Putter!(ElementType, OutputRange)(o)));
+    return TransducedSink!(putterType)(t(Putter!(ElementType, OutputRange)(o)));
 }
 
 ///
@@ -189,7 +188,7 @@ unittest
     import transduced.transducers;
 
     auto output = appender!(int[])();
-    auto transducedOutput = transduceSink(mapper!((int x) => -x), output);
+    auto transducedOutput = transduceSink!int(mapper!((int x) => -x), output);
     static assert(isOutputRange!(typeof(transducedOutput), int));
     put(transducedOutput, 1);
     assert(output.data == [-1]);
@@ -207,7 +206,7 @@ unittest
     import transduced.transducers;
 
     auto output = appender!(int[])();
-    auto transducedOutput = transduceSink(taker(2), output);
+    auto transducedOutput = transduceSink!int(taker(2), output);
     put(transducedOutput, 1);
     assert(transducedOutput.isAcceptingInput());
     assert(output.data == [1]);

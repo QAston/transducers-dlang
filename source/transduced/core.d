@@ -51,27 +51,39 @@ mixin template PutterDecoratorMixin(Decorated)
     {
         return putter.to();
     }
+
+    /++
+    By default PutterDecorators take same kind of input as the decorated putter.
+    In a case when types are different this needs to be overridden.
+    +/
+    alias InputType = Decorated.InputType;
 }
 
 /++
 Wraps an output range + put function in a struct providing early termination, buffering, and flushing.
 +/
-public struct Putter(OutputRange)
+public struct Putter(ElementType, OutputRange)
 {
     private OutputRange _to;
     private bool _acceptingInput;
     this(OutputRange to)
     {
         this._acceptingInput = true;
-        this._to = forwardLvalue(to);
+        this._to = own(to);
     }
+
+    /++
+    Type taken in $(D put).
+    +/
+
+    alias InputType = ElementType;
 
     /++
     Put the given $(D input) into the $(D Putter.to) output range.
     
     Advances the process represented by an output range by a single step.
     +/
-    void put(InputType)(InputType input)
+    void put(InputType input)
     {
         std.range.put(_to, input);
     }

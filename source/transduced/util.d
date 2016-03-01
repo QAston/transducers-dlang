@@ -4,6 +4,7 @@ Utility module for implementing transducers.
 module transduced.util;
 import std.experimental.allocator;
 import std.algorithm : move;
+import std.traits : Parameters, ReturnType, isCallable;
 
 /++
 Returns true if type T is copyable.
@@ -11,13 +12,13 @@ Returns true if type T is copyable.
 enum isCopyable (T) = is(typeof((T a) => {T b = a;}));
 
 /++
-Prepares lvalues of copyable and non-copyable types for being forwarded to function calls. For copyable types this is a no-op.
-For non-copyable types returns result of calling $(D std.algorithm.move), which copies from given $(D src) into an rvalue, and resets $(D src) using init.
+Takes ownership from provided lvalue into an rvalue. Then ownership of the rvalue can be transfered freely according to the rules of D language.
 
-Rvalues are forwared in D regardless of copyability.
+For copyable types this is simply returns the value.
+For non-copyable types returns result of calling $(D std.algorithm.move), which copies from given $(D src) into an rvalue, and resets $(D src) using init.
 +/
 pragma(inline, true)
-auto forwardLvalue(T)(ref T src) {
+auto own(T)(ref T src) {
     static if (isCopyable!T) {
         return src;
     }
@@ -48,9 +49,9 @@ version(unittest){
 unittest {
     S s;
     s.a = 2;
-    assert(requiresForward(forwardLvalue(s)) == 2);
+    assert(requiresForward(own(s)) == 2);
     int a = 3;
-    assert(requiresForward(forwardLvalue(a)) == 3);
+    assert(requiresForward(own(a)) == 3);
 }
 
 /++
@@ -61,28 +62,25 @@ template isStaticFn(alias f)
     enum bool isStaticFn = __traits(isStaticFunction, f);
 }
 
-/++
-Wrapper object for static functions, for use as callable objects.
-
-Allows using the same code by delegates/callable objs and static functions, while preserving optimizations for static functions.
-
-Examples:
----
-auto mapper(alias f)() if (isStaticFn!f) {
-    return mapper(StaticFn!(f).init); // forward to version taking a callable object
-}
-auto mapper(F)(F f) {
-...
-}
----
-+/
-struct StaticFn(alias f)
+struct MapFnWrapper(alias f)
 {
-    pragma(inline, true) auto opCall(T...)(auto ref T args) inout
+    alias ParameterType = Parameters!f;
+    static pragma(inline, true) ReturnType!f opCall(ParameterType arg)
     {
-        return f(args);
+        return f(arg);
     }
 }
+
+struct PredFnWrapper(alias pred)
+{
+    alias ParameterType = Parameters!pred;
+    static pragma(inline, true) bool opCall(ParameterType arg)
+    {
+        return pred(arg);
+    }
+}
+
+
 // TODO: implement those
 enum isPutter(T) = true;
 
