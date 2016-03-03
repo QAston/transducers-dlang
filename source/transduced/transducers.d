@@ -6,7 +6,6 @@ module transduced.transducers;
 import transduced.util;
 import transduced.core;
 import std.range;
-import std.algorithm : move;
 
 
 // function returning a transducer
@@ -23,41 +22,7 @@ auto mapper(alias f)() if (isStaticFn!f)
 /// ditto
 auto mapper(F)(F f)
 {
-    // transducers create an object which apply the given job description to given Putter
-    // the created objs are used privately
-    // type specialization cannot be done at runtime, so templates needed
-    static struct Mapper
-    { // transducer
-        private F f;
-        this(F f)
-        {
-            this.f = own(f);
-        }
-
-        auto opCall(Decorated)(Decorated putter)
-        {
-            static struct PutterDecorator
-            {
-                mixin PutterDecoratorMixin!(Decorated);
-                alias InputType = Parameters!(f)[0];
-                private F f;
-                private this(Decorated putter, F f)
-                {
-                    this.f = own(f);
-                    this.putter = own(putter);
-                }
-
-                void put(InputType elem)
-                {
-                    putter.put(f(elem));
-                }
-            }
-
-            return PutterDecorator(own(putter), own(f));
-        }
-    }
-
-    return Mapper(own(f));
+    return Mapper!F(own(f));
 }
 
 ///
@@ -71,52 +36,62 @@ unittest
     assert(output.data == [-1, -2, -3, -4]);
 }
 
+// transducers create an object which apply the given job description to given Putter
+// the created objs are used privately
+// type specialization cannot be done at runtime, so templates needed
+struct Mapper(F)
+{ // transducer
+    private F f;
+    private this(F f)
+    {
+        this.f = own(f);
+    }
+
+    auto opCall(Decorated)(Decorated putter)
+    {
+        static struct PutterDecorator
+        {
+            mixin PutterDecoratorMixin!(Decorated);
+            alias InputType = Parameters!(f)[0]; 
+            private F f;
+            private this(Decorated putter, F f)
+            {
+                this.f = own(f);
+                this.putter = own(putter);
+            }
+
+            void put(InputType elem)
+            {
+                putter.put(f(elem));
+            }
+        }
+
+        return PutterDecorator(own(putter), own(f));
+    }
+}
+
 // transducer with early termination
 // when transducer stack has isTerminatedEarly flag, TransduciblePutter must not supply more input (using put method)
 // buffered transducer can still call put method in flush() to putter input buffered earlier
 /++
-Returns a transducer modifying the putter by forwarding only first $(D howMany) inputs.
+Returns a transducer modifying the putter by using only first $(D howMany) inputs.
 +/
 auto taker(size_t howMany)
 {
-    static struct Taker
+    static struct TakeCnt
     {
-        private size_t howMany;
+        private:
+        size_t howMany;
         this(size_t howMany)
         {
             this.howMany = howMany;
         }
-
-        auto opCall(Decorated)(Decorated putter)
+        bool opCall(T)(T t)
         {
-            static struct PutterDecorator
-            {
-                mixin PutterDecoratorMixin!(Decorated);
-                private size_t howMany;
-                private this(Decorated putter, size_t howMany)
-                {
-                    this.putter = own(putter);
-                    this.howMany = howMany;
-                }
-
-                void put(InputType elem)
-                {
-                    if (--howMany == howMany.max)
-                    {
-                        putter.markNotAcceptingInput();
-                    }
-                    else
-                    {
-                        putter.put(elem);
-                    }
-                }
-            }
-
-            return PutterDecorator(own(putter), howMany);
+             return !(--howMany == howMany.max);
         }
     }
-
-    return Taker(howMany);
+    return Taker!TakeCnt(TakeCnt(howMany));
 }
 ///
 unittest
@@ -130,6 +105,147 @@ unittest
 }
 
 /++
+Returns a transducer modifying the putter by taking inputs while $(D p $(LPAREN)input$(RPAREN) == true) and skipping remaining ones.
++/
+auto taker(PRED)(PRED p)
+{
+    return Taker!PRED(p);
+}
+///
+unittest
+{
+    import std.array;
+    import transduced.range;
+
+    auto output = appender!(int[])();
+    [1, 2, 3, 4, 1, 2].into!int(taker((int x) => x < 4), output);
+    assert(output.data == [1, 2, 3]);
+}
+
+struct Taker(F)
+{
+    private F f;
+    private this(F f)
+    {
+        this.f = own(f);
+    }
+
+    auto opCall(Decorated)(Decorated putter)
+    {
+        static struct PutterDecorator
+        {
+            mixin PutterDecoratorMixin!(Decorated);
+            private F f;
+            private this(Decorated putter, F f)
+            {
+                this.f = own(f);
+                this.putter = own(putter);
+            }
+
+            void put(InputType elem)
+            {
+                if (f(elem))
+                {
+                    putter.put(elem);
+                }
+                else
+                {
+                    putter.markNotAcceptingInput();
+                }
+            }
+        }
+
+        return PutterDecorator(own(putter), own(f));
+    }
+}
+
+/++
+Returns a transducer modifying the putter by dropping first $(D howMany) inputs.
++/
+auto dropper(size_t howMany)
+{
+    static struct DropCnt
+    {
+    private:
+        size_t howMany;
+        this(size_t howMany)
+        {
+            this.howMany = howMany;
+        }
+        bool opCall(T)(T t)
+        {
+            return !(--howMany == howMany.max);
+        }
+    }
+    return Dropper!DropCnt(DropCnt(howMany));
+}
+///
+unittest
+{
+    import std.array;
+    import transduced.range;
+
+    auto output = appender!(int[])();
+    [1, 2, 3, 4].into!int(dropper(1), output);
+    assert(output.data == [2,3,4]);
+}
+
+/++
+Returns a transducer modifying the putter by dropping inputs while $(D p $(LPAREN)input$(RPAREN) == true), and using all the rest.
++/
+auto dropper(PRED)(PRED p)
+{
+    return Dropper!PRED(p);
+}
+///
+unittest
+{
+    import std.array;
+    import transduced.range;
+
+    auto output = appender!(int[])();
+    [1, 2, 3, 4, 1, 2].into!int(dropper((int x) => x < 4), output);
+    assert(output.data == [4, 1, 2]);
+}
+
+struct Dropper(F)
+{
+    private F f;
+    private this(F f)
+    {
+        this.f = own(f);
+    }
+
+    auto opCall(Decorated)(Decorated putter)
+    {
+        static struct PutterDecorator
+        {
+            mixin PutterDecoratorMixin!(Decorated);
+            private F f;
+            private bool dropped;
+            private this(Decorated putter, F f)
+            {
+                this.f = own(f);
+                this.putter = own(putter);
+            }
+
+            void put(InputType elem)
+            {
+                if (dropped) {
+                    putter.put(elem);
+                }
+                else if (!f(elem)) {
+                    dropped = true;
+                    putter.put(elem);
+                }
+            }
+        }
+
+        return PutterDecorator(own(putter), own(f));
+    }
+}
+
+/++
 Returns a transducer modifying the putter by forwarding only inputs satisfying $(D pred).
 +/
 auto filterer(alias pred)() if (isStaticFn!pred)
@@ -139,38 +255,7 @@ auto filterer(alias pred)() if (isStaticFn!pred)
 /// ditto
 auto filterer(F)(F pred)
 {
-    static struct Filterer
-    {
-        private F f;
-        this(F f)
-        {
-            this.f = own(f);
-        }
-
-        auto opCall(Decorated)(Decorated putter)
-        {
-            static struct PutterDecorator
-            {
-                mixin PutterDecoratorMixin!(Decorated);
-                private F f;
-                private this(Decorated putter, F f)
-                {
-                    this.f = own(f);
-                    this.putter = own(putter);
-                }
-
-                void put(InputType elem)
-                {
-                    if (f(elem))
-                        putter.put(elem);
-                }
-            }
-
-            return PutterDecorator(own(putter), own(f));
-        }
-    }
-
-    return Filterer(own(pred));
+    return Filterer!F(own(pred));
 }
 
 ///
@@ -184,9 +269,40 @@ unittest
     assert(output.data == [1, 3]);
 }
 
+struct Filterer(F)
+{
+    private F f;
+    private this(F f)
+    {
+        this.f = own(f);
+    }
+
+    auto opCall(Decorated)(Decorated putter)
+    {
+        static struct PutterDecorator
+        {
+            mixin PutterDecoratorMixin!(Decorated);
+            private F f;
+            private this(Decorated putter, F f)
+            {
+                this.f = own(f);
+                this.putter = own(putter);
+            }
+
+            void put(InputType elem)
+            {
+                if (f(elem))
+                    putter.put(elem);
+            }
+        }
+
+        return PutterDecorator(own(putter), own(f));
+    }
+}
+
 
 //transducer which calls put function more than once
-static struct Flattener(InputRange)
+struct Flattener(InputRange)
 {
     auto opCall(Decorated)(Decorated putter)
     {
@@ -262,36 +378,10 @@ Returns a transducer buffering all input until $(D Putter.flush) call.
 +/
 auto buffer()
 {
-    static struct Buffer
-    {
-        auto opCall(Decorated)(Decorated putter)
-        {
-            static struct PutterDecorator(Buffer) {
-                mixin PutterDecoratorMixin!(Decorated);
-                private Buffer buffer;
-                this(Decorated putter, Buffer buffer) {
-                    this.putter = own(putter);
-                    this.buffer = own(buffer);
-                }
-
-                void put(InputType elem) {
-                    buffer.put(elem);
-                }
-
-                void flush() {
-                    while (!buffer.empty()) {
-                        putter.put(buffer.removeFront());
-                    }
-                }
-            }
-            return PutterDecorator!(typeof(putterBuffer!(Decorated.InputType)()))
-                (own(putter), putterBuffer!(Decorated.InputType)());
-        }
-    }
-
     return Buffer.init;
 }
 
+///
 unittest {
     import std.array;
     import transduced.range;
@@ -309,6 +399,33 @@ unittest {
     assert(output.data() == [1, 2]);
     range.flush();
     assert(output.data() == [1, 2, 3, 4]);
+}
+
+struct Buffer
+{
+    auto opCall(Decorated)(Decorated putter)
+    {
+        static struct PutterDecorator(Buffer) {
+            mixin PutterDecoratorMixin!(Decorated);
+            private Buffer buffer;
+            private this(Decorated putter, Buffer buffer) {
+                this.putter = own(putter);
+                this.buffer = own(buffer);
+            }
+
+            void put(InputType elem) {
+                buffer.put(elem);
+            }
+
+            void flush() {
+                while (!buffer.empty()) {
+                    putter.put(buffer.removeFront());
+                }
+            }
+        }
+        return PutterDecorator!(typeof(putterBuffer!(Decorated.InputType)()))
+            (own(putter), putterBuffer!(Decorated.InputType)());
+    }
 }
 
 /++
@@ -376,7 +493,7 @@ private struct Composer(T, U)
     private T t;
     private U u;
     
-    pragma(inline, true) private this(T t, U u)
+    private this(T t, U u)
     {
         this.t = own(t);
         this.u = own(u);
