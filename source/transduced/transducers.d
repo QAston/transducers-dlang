@@ -160,57 +160,6 @@ private struct Taker(F)
 }
 
 /++
-Returns a transducer modifying the putter by using only last $(D howMany) inputs.
-+/
-auto tailTaker(size_t howMany)
-{
-    return TailTaker(howMany);
-}
-///
-unittest
-{
-    import std.array;
-    import transduced.range;
-
-    auto output = appender!(int[])();
-    [1, 2, 3, 4, 1, 2].into!int(tailTaker(3), output);
-    assert(output.data == [4, 1, 2]);
-}
-
-private struct TailTaker
-{
-    private size_t howMany;
-    this(size_t howMany)
-    {
-        this.howMany = howMany;
-    }
-
-    auto opCall(Decorated)(Decorated putter)
-    {
-        static struct PutterDecorator(Buffer) {
-            mixin PutterDecoratorMixin!(Decorated);
-            private Buffer buffer;
-            private size_t howMany;
-            private this(Decorated putter, Buffer buffer, size_t howMany) {
-                this.putter = own(putter);
-                this.buffer = own(buffer);
-                this.howMany = howMany;
-            }
-
-            void put(InputType elem)
-            {
-            }
-            void flush()
-            {
-            }
-        }
-
-        return PutterDecorator!(typeof(putterBuffer!(Decorated.InputType)()))
-            (own(putter), putterBuffer!(Decorated.InputType)(), howMany);
-    }
-}
-
-/++
 Returns a transducer modifying the putter by dropping first $(D howMany) inputs.
 +/
 auto dropper(size_t howMany)
