@@ -39,7 +39,7 @@ unittest
 // transducers create an object which apply the given job description to given Putter
 // the created objs are used privately
 // type specialization cannot be done at runtime, so templates needed
-struct Mapper(F)
+private struct Mapper(F)
 { // transducer
     private F f;
     private this(F f)
@@ -122,7 +122,7 @@ unittest
     assert(output.data == [1, 2, 3]);
 }
 
-struct Taker(F)
+private struct Taker(F)
 {
     private F f;
     private this(F f)
@@ -156,6 +156,57 @@ struct Taker(F)
         }
 
         return PutterDecorator(own(putter), own(f));
+    }
+}
+
+/++
+Returns a transducer modifying the putter by using only last $(D howMany) inputs.
++/
+auto tailTaker(size_t howMany)
+{
+    return TailTaker(howMany);
+}
+///
+unittest
+{
+    import std.array;
+    import transduced.range;
+
+    auto output = appender!(int[])();
+    [1, 2, 3, 4, 1, 2].into!int(tailTaker(3), output);
+    assert(output.data == [4, 1, 2]);
+}
+
+private struct TailTaker
+{
+    private size_t howMany;
+    this(size_t howMany)
+    {
+        this.howMany = howMany;
+    }
+
+    auto opCall(Decorated)(Decorated putter)
+    {
+        static struct PutterDecorator(Buffer) {
+            mixin PutterDecoratorMixin!(Decorated);
+            private Buffer buffer;
+            private size_t howMany;
+            private this(Decorated putter, Buffer buffer, size_t howMany) {
+                this.putter = own(putter);
+                this.buffer = own(buffer);
+                this.howMany = howMany;
+            }
+
+            void put(InputType elem)
+            {
+            }
+            void flush()
+            {
+            }
+        }
+
+        return PutterDecorator!(typeof(putterBuffer!(Decorated.InputType)()))
+            (own(putter), putterBuffer!(Decorated.InputType)(), howMany);
     }
 }
 
@@ -208,7 +259,7 @@ unittest
     assert(output.data == [4, 1, 2]);
 }
 
-struct Dropper(F)
+private struct Dropper(F)
 {
     private F f;
     private this(F f)
@@ -269,7 +320,7 @@ unittest
     assert(output.data == [1, 3]);
 }
 
-struct Filterer(F)
+private struct Filterer(F)
 {
     private F f;
     private this(F f)
@@ -300,9 +351,28 @@ struct Filterer(F)
     }
 }
 
+/++
+Returns a transducer modifying the putter by converting $(D InputRange) inputs to a series of inputs with all $(D InputRange) elements.
++/
+Flattener!InputRange flattener(InputRange)()  if (isInputRange!InputRange)
+{
+    return Flattener!InputRange.init;
+}
+
+///
+unittest
+{
+    import std.array;
+    import transduced.range;
+
+    auto output = appender!(int[])();
+    [[1, 2], [3, 4]].into!int(flattener!(int[]), output);
+    assert(output.data == [1, 2, 3, 4]);
+}
+
 
 //transducer which calls put function more than once
-struct Flattener(InputRange)
+private struct Flattener(InputRange)
 {
     auto opCall(Decorated)(Decorated putter)
     {
@@ -330,25 +400,6 @@ struct Flattener(InputRange)
 }
 
 /++
-Returns a transducer modifying the putter by converting $(D InputRange) inputs to a series of inputs with all $(D InputRange) elements.
-+/
-Flattener!InputRange flattener(InputRange)()  if (isInputRange!InputRange)
-{
-    return Flattener!InputRange.init;
-}
-
-///
-unittest
-{
-    import std.array;
-    import transduced.range;
-
-    auto output = appender!(int[])();
-    [[1, 2], [3, 4]].into!int(flattener!(int[]), output);
-    assert(output.data == [1, 2, 3, 4]);
-}
-
-/++
 Composition of mapper and flattener.
 +/
 pragma(inline, true)
@@ -361,7 +412,6 @@ auto flatMapper(InputRange, F)(F f)
 {
     return comp(mapper(own(f)), flattener!InputRange());
 }
-
 ///
 unittest
 {
@@ -401,7 +451,7 @@ unittest {
     assert(output.data() == [1, 2, 3, 4]);
 }
 
-struct Buffer
+private struct Buffer
 {
     auto opCall(Decorated)(Decorated putter)
     {
@@ -426,29 +476,6 @@ struct Buffer
         return PutterDecorator!(typeof(putterBuffer!(Decorated.InputType)()))
             (own(putter), putterBuffer!(Decorated.InputType)());
     }
-}
-
-/++
-Returns a transducer modifying the putter by buffering all the input and transforming it using given $(D f) function on f $(D flush).
-
-This function allows one to plug input range algorithms into transducers ecosystem.
-Note that this transducer buffers all puts input until $(D flush), that results in following sideffects:
-    - no puts are done untill flush, so putter is not really continuous
-    - internal transducer buffer has to allocate memory for that 
-
-Params:
-    f = a function taking an input range, and returning one.
-        The function will be executed on flush with a random access range having all input data accumulated. 
-        Returned range will be forwarded to the decorated putter.
-+/
-auto flusher(F)(F f)
-{
-    return flusher(MapFnWrapper!(f).init);
-}
-/// ditto
-auto flusher(F)(F factory)
-{
-    //TODO: implement this
 }
 
 /++
