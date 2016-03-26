@@ -20,14 +20,14 @@ mixin template PutterDecoratorMixin(Decorated)
     private Decorated putter;
 
     /++
-    Forwards to the decorated $(Putter.isAcceptingInput). Do not override.
+    Forwards to the decorated $(D Putter.isAcceptingInput). Do not override.
     +/
     pragma(inline, true) bool isAcceptingInput()
     {
         return putter.isAcceptingInput();
     }
     /++
-    Forwards to the decorated $(Putter.markNotAcceptingInput). Do not override.
+    Forwards to the decorated $(D Putter.markNotAcceptingInput). Do not override.
     +/
     pragma(inline, true) void markNotAcceptingInput()
     {
@@ -45,7 +45,7 @@ mixin template PutterDecoratorMixin(Decorated)
     }
 
     /++
-    Forwards to the decorated $(Putter.to). Do not override.
+    Forwards to the decorated $(D Putter.to). Do not override.
     +/
     pragma(inline, true) ref auto to() @property
     {
