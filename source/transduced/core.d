@@ -34,11 +34,11 @@ mixin template PutterDecoratorMixin(Decorated)
         putter.markNotAcceptingInput();
     }
     /++
-	PutterDecorators which do buffering need to override this method. By default forwards to the decorated $(Putter.flush).
+    PutterDecorators which do buffering need to override this method. By default forwards to the decorated $(Putter.flush).
 
-	This method should $(D Putter.put) any buffered data into the decorated $(D putter).
-	After all processing is done the decorator should forward to the decorated $(D Putter.flush).
-	+/
+    This method should $(D Putter.put) any buffered data into the decorated $(D putter).
+    After all processing is done the decorator should forward to the decorated $(D Putter.flush).
+    +/
     pragma(inline, true) void flush()
     {
         putter.flush();
@@ -110,10 +110,10 @@ public struct Putter(ElementType, OutputRange)
     }
 
     /++
-    Flushes any input buffered so far by PutterDecorators using $(Putter.put).
+    Flushes any input buffered so far by PutterDecorators using $(D Putter.put).
 
     Called when finished $(D Putter.put)ting.
-	+/
+    +/
     void flush()
     {
     }

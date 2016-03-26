@@ -19,7 +19,7 @@ transducers are objects which can be composed on their own, without specifying I
 transducers could work on any sequential processing, not just ranges because they're independent of execution strategy (push/pull) and transformed type (could work with Reactive Extensions library for example)
 </li>
 <li>
-transducers provide different set of sequential operations (eg. flatMap, takeWhile)
+transducers provide different set of sequential operations (eg. flatMaper, taker, windower)
 </li>
 <li>
 transducers can work with stack functors, while phobos functor data is <a href="http://forum.dlang.org/post/kpwbtskhnkkiwkdsfzby@forum.dlang.org"> allocated on heap </a>
@@ -39,12 +39,12 @@ transducers have more methods to inline
 </ul>
 
 <h2>Differences from clojure transducers</h2>
-<p>Basically everything is different except the concept. Transducers are objects instead of functions. Design patterns/OOP terminology is used instead of mathematical terminology. Implementation has different constraints: statically typed using templates, cannot freely copy objects, shared references. Adopts Dlang conventions and practices. </p>
+<p>Basically everything is different except the concept. Transducers are objects instead of functions. Design patterns/OOP terminology is used instead of mathematical terminology. Implementation has different constraints: statically typed using templates, cannot freely copy objects, share references. Adopts Dlang conventions and practices. Bound to transducible context at compile time</p>
 
 <h2>Usage examples</h2>
-<p>
-TODO
-</p>
+---
+import transduced;
+---
 +/
 module transduced;
 

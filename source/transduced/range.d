@@ -11,15 +11,17 @@ import transduced.util;
 import transduced.core;
 
 /++
-Returns a lazy range of $(D ElementType) items, each item is taken from given $(D inputRange) and lazily transformed by provided transducer $(D t)
+Returns a lazy range of $(D OutElementType) items, each item is taken from given $(D inputRange) and lazily transformed by provided transducer $(D t)
 
 Range element type must be given and cannot be deduced from transducers because transducers are independent of what they decorate, range in this case.
 +/
-auto transduceSource(ElementType, R, Transducer)(R inputRange, Transducer t) if (isInputRange!R)
+auto transduceSource(OutElementType, R, Transducer)(R inputRange, Transducer t) if (isInputRange!R)
 {
-    alias bufferType = typeof(putterBuffer!ElementType());
-    alias putterType = typeof(t(Putter!(ElementType, bufferType)(putterBuffer!ElementType())));
-    return TransducedSource!(R, putterType, ElementType)(inputRange, t(Putter!(ElementType, bufferType)(putterBuffer!ElementType())));
+    alias bufferType = typeof(putterBuffer!OutElementType());
+    alias putterType = typeof(t(Putter!(OutElementType,
+        bufferType)(putterBuffer!OutElementType())));
+    return TransducedSource!(R, putterType, OutElementType)(inputRange,
+        t(Putter!(OutElementType, bufferType)(putterBuffer!OutElementType())));
 }
 
 ///
@@ -35,7 +37,8 @@ unittest
     assert(res.front == -4);
     res.popFront();
     assert(res.empty);
-    foreach(int i; res) {
+    foreach (int i; res)
+    {
     }
 }
 
@@ -95,8 +98,10 @@ private struct TransducedSource(Range, Putter, ElementType) if (isInputRange!Ran
     }
 
     // make range usable with foreach:
-    int opApply(scope int delegate(ElementType) dg) {
-        while (!empty()) {
+    int opApply(scope int delegate(ElementType) dg)
+    {
+        while (!empty())
+        {
             int res = dg(front());
             if (res != 0)
                 return res;
@@ -105,9 +110,11 @@ private struct TransducedSource(Range, Putter, ElementType) if (isInputRange!Ran
         return 0;
     }
 
-    int opApply(scope int delegate(size_t, ElementType) dg) {
+    int opApply(scope int delegate(size_t, ElementType) dg)
+    {
         int i = 0;
-        while (!empty()) {
+        while (!empty())
+        {
             int res = dg(i, front());
             if (res != 0)
                 return res;
@@ -121,9 +128,10 @@ private struct TransducedSource(Range, Putter, ElementType) if (isInputRange!Ran
 /++
 Populates output range $(D to) with contents of input range $(D from) transformed by transducer $(D t).
 +/
-auto into(ElementType, R, Transducer, Out)(R from, Transducer t, Out to) if (isInputRange!R)
+auto into(OutElementType, R, Transducer, Out)(R from, Transducer t, Out to) if (
+        isInputRange!R && isOutputRange!(Out, OutElementType))
 {
-    auto transducerStack = t(Putter!(ElementType, Out)(to));
+    auto transducerStack = t(Putter!(OutElementType, Out)(to));
     foreach (el; from)
     {
         transducerStack.put(el);
@@ -150,6 +158,7 @@ public struct TransducedSink(Putter)
 {
     private Putter _putter;
 
+    alias InputType = Putter.InputType;
     this(Putter putter)
     {
         _putter = own(putter);
@@ -160,7 +169,7 @@ public struct TransducedSink(Putter)
         return _putter.isAcceptingInput();
     }
 
-    public void put(InputType)(InputType input)
+    public void put(InputType input)
     {
         if (_putter.isAcceptingInput())
             _putter.put(input);
@@ -175,10 +184,11 @@ public struct TransducedSink(Putter)
 /++
 Returns an output range of type TransducedSink which forwards input transformed by transducer $(D t) to output range $(D o).
 +/
-auto transduceSink(ElementType, Transducer, OutputRange)(Transducer t, OutputRange o)
+auto transduceSink(OutElementType, Transducer, OutputRange)(Transducer t, OutputRange o) if (
+        isOutputRange!(OutputRange, OutElementType))
 {
-    alias putterType = typeof(t(Putter!(ElementType, OutputRange)(o)));
-    return TransducedSink!(putterType)(t(Putter!(ElementType, OutputRange)(o)));
+    alias putterType = typeof(t(Putter!(OutElementType, OutputRange)(o)));
+    return TransducedSink!(putterType)(t(Putter!(OutElementType, OutputRange)(o)));
 }
 
 ///

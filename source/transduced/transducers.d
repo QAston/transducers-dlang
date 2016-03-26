@@ -601,7 +601,8 @@ unittest
     auto output = appender!(int[][])();
     // the partitionView.dup is REQUIRED here because the reference to it is returned from the function
     // you can use any other method to allocate an array to return
-    [1, 2, 3, 4, 5, 6, 7].into!(int[])(partitionMapper!((scope int[] partitionView) => partitionView.dup)(3), output);
+    [1, 2, 3, 4, 5, 6, 7].into!(int[])(
+        partitionMapper!((scope int[] partitionView) => partitionView.dup)(3), output);
     assert(output.data == [[1, 2, 3], [4, 5, 6], [7]]);
 }
 
@@ -612,7 +613,8 @@ unittest
     import transduced.range;
 
     auto output = appender!(int[])();
-    [1, 2, 3, 4, 5, 6, 7].into!(int)(partitionMapper!((scope int[] partitionView) => partitionView[0])(3), output);
+    [1, 2, 3, 4, 5, 6, 7].into!(int)(
+        partitionMapper!((scope int[] partitionView) => partitionView[0])(3), output);
     assert(output.data == [1, 4, 7]);
 }
 
@@ -626,6 +628,7 @@ private struct PartitionMapper(F)
         this.f = own(f);
         this.partitionSize = partitionSize;
     }
+
     auto opCall(Decorated)(Decorated putter)
     {
         static struct PutterDecorator(Buffer)
@@ -662,9 +665,9 @@ private struct PartitionMapper(F)
         }
 
         alias BufferElementType = ElementType!(Parameters!(f)[0]);
-        
-        return PutterDecorator!(typeof(putterBuffer!(BufferElementType)()))(
-            own(putter), putterBuffer!(BufferElementType)(partitionSize), own(f));
+
+        return PutterDecorator!(typeof(putterBuffer!(BufferElementType)()))(own(putter),
+            putterBuffer!(BufferElementType)(partitionSize), own(f));
     }
 }
 
