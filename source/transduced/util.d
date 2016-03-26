@@ -9,7 +9,7 @@ import std.traits : Parameters, ReturnType, isCallable;
 /++
 Returns true if type T is copyable.
 +/
-enum isCopyable (T) = is(typeof((T a) => {T b = a;}));
+enum isCopyable(T) = is(typeof((T a) => { T b = a; }));
 
 /++
 Takes ownership from provided lvalue into an rvalue. Then ownership of the rvalue can be transfered freely according to the rules of D language.
@@ -17,36 +17,47 @@ Takes ownership from provided lvalue into an rvalue. Then ownership of the rvalu
 For copyable types this is simply returns the value.
 For non-copyable types returns result of calling $(D std.algorithm.move), which copies from given $(D src) into an rvalue, and resets $(D src) using init.
 +/
-pragma(inline, true)
-auto own(T)(ref T src) {
-    static if (isCopyable!T) {
+pragma(inline, true) auto own(T)(ref T src)
+{
+    static if (isCopyable!T)
+    {
         return src;
     }
-    else {
+    else
+    {
         return move(src);
     }
 }
 
-version(unittest){
-    struct S {
+version (unittest)
+{
+    struct S
+    {
         int a;
         @disable this(this);
     }
-    struct U {
+
+    struct U
+    {
         S s;
     }
+
     static assert(!isCopyable!S);
     static assert(!isCopyable!U);
     static assert(isCopyable!int);
-    int requiresForward(S s) {
+    int requiresForward(S s)
+    {
         return s.a;
     }
-    int requiresForward(int a){
+
+    int requiresForward(int a)
+    {
         return a;
     }
 }
 
-unittest {
+unittest
+{
     S s;
     s.a = 2;
     assert(requiresForward(own(s)) == 2);
@@ -80,13 +91,12 @@ struct PredFnWrapper(alias pred)
     }
 }
 
-
 // TODO: implement those
-enum isPutter(T) = true;
+package enum isPutter(T) = true;
 
-enum isTransducer(T) = true; // TODO tests for work with non-copyable putters
+package enum isTransducer(T) = true; // TODO tests for work with non-copyable putters
 
-enum isPutterBuffer(T) = true;
+package enum isPutterBuffer(T) = true;
 
 version (unittest)
 {
@@ -96,11 +106,11 @@ version (unittest)
 }
 
 /++
-A queue like buffer that's first filled up with put, then depopulated using removeFront() until it's empty.
-Keeps memory allocated until desctruction
-Should take param how large initial allocation should be.
+A queue like buffer that works in 2 phases: filling element by element using $(D put) and removing element by element using removeFront() until it's empty.
+
+Non-copyable. Owns allocated memory and frees it upon destruction.
 +/
-struct PutterBuffer(T, Allocator)
+package struct PutterBuffer(T, Allocator)
 {
     private Allocator _allocator;
     private T[] _array;
@@ -109,10 +119,10 @@ struct PutterBuffer(T, Allocator)
 
     @disable this(this);
 
-    this(Allocator allocator)
+    this(Allocator allocator, size_t initialCap)
     {
         _allocator = allocator;
-        _array = _allocator.makeArray(1, T.init);
+        _array = _allocator.makeArray(initialCap, T.init);
     }
 
     void put(T t)
@@ -155,6 +165,17 @@ struct PutterBuffer(T, Allocator)
         return _end - _begin;
     }
 
+    size_t capacity()
+    {
+        return _array.length;
+    }
+
+    bool reserve(size_t cap)
+    {
+        assert(cap >= capacity());
+        return expandArray(_allocator, _array, cap - capacity());
+    }
+
     bool empty() @property
     {
         return _begin == _end;
@@ -188,9 +209,9 @@ struct PutterBuffer(T, Allocator)
     }
 }
 
-auto putterBuffer(T)()
+package auto putterBuffer(T)(size_t initialCap = 1)
 {
-    return PutterBuffer!(T, typeof(theAllocator()))(theAllocator());
+    return PutterBuffer!(T, typeof(theAllocator()))(theAllocator(), initialCap);
 }
 
 unittest
