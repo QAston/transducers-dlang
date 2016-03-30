@@ -55,10 +55,11 @@ unittest {
     static assert (isPutter!(Putter!(int, int[])));
 }
 /++
-Is true when $(D T) is a transducer type capable of producing output of type $(D OutputType). Transducers are factory objects which take a $(D Putter) objects to decorate and return those object wrapped in a PutterDecorator object.
+Is true when $(D T) is a transducer type which can process $(D InputType) input. Transducers are factory objects which take a $(D Putter) objects to decorate and return those object wrapped in a PutterDecorator object. The returned PutterDecorators work with $(D InputType) input.
 +/
-enum isTransducer(T, OutputType) = is(typeof((inout int = 0)
+enum isTransducer(T, InputType) = is(typeof((inout int = 0)
                                  {
+                                     alias OutputType = T.OutputType!(InputType);
                                      auto decorated = T.init(Putter!(OutputType, void delegate(OutputType)).init);
                                      static assert(isPutter!(typeof(decorated)));
                                  }));
@@ -76,10 +77,10 @@ unittest{
             }
             return PutterDecorator.init;
         }
+        alias OutputType(InputType) = InputType;
     }
     static assert (isTransducer!(Tducer, int));
 }
-
 
 /++
 Mixin used to implement common code for all putter decorators.

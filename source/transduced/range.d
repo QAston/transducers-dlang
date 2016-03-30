@@ -11,12 +11,12 @@ import transduced.util;
 import transduced.core;
 
 /++
-Returns a lazy range of $(D OutElementType) items, each item is taken from given $(D inputRange) and lazily transformed by provided transducer $(D t)
-
-Range element type must be given and cannot be deduced from transducers because transducers are independent of what they decorate, range in this case.
+Returns a lazy range, each item is taken from given $(D inputRange) and lazily transformed by provided transducer $(D t).
 +/
-auto transduceSource(OutElementType, R, Transducer)(R inputRange, Transducer t) if (isInputRange!R && isTransducer!(Transducer, OutElementType))
+auto transduceSource(R, Transducer)(R inputRange, Transducer t) if (isInputRange!R && isTransducer!(Transducer, ElementType!R))
 {
+    alias OutElementType = Transducer.OutputType!(ElementType!(R));
+
     alias bufferType = typeof(putterBuffer!OutElementType());
     alias putterType = typeof(t(Putter!(OutElementType,
         bufferType)(putterBuffer!OutElementType())));
@@ -29,7 +29,7 @@ unittest
 {
     import transduced.transducers;
 
-    auto res = transduceSource!(int)([1, 2, 3, 4], comp(taker(2), mapper!minus, mapper!twice));
+    auto res = transduceSource([1, 2, 3, 4], comp(taker(2), mapper!minus, mapper!twice));
     assert(!res.empty);
     assert(res.front == -2);
     res.popFront();
@@ -126,11 +126,13 @@ private struct TransducedSource(Range, Putter, ElementType) if (isInputRange!Ran
 }
 
 /++
-Populates output range $(D to) with contents of input range $(D from) transformed by transducer $(D t). $(D to) has to take $(D OutElementType) as input.
+Populates output range $(D to) with contents of input range $(D from) transformed by transducer $(D t).
 +/
-auto into(OutElementType, R, Transducer, Out)(R from, Transducer t, Out to) if (
-        isInputRange!R && isOutputRange!(Out, OutElementType) && isTransducer!(Transducer, OutElementType))
+auto into(R, Transducer, Out)(R from, Transducer t, Out to) if (
+        isInputRange!R && isTransducer!(Transducer, ElementType!R))
 {
+    alias OutElementType = Transducer.OutputType!(ElementType!(R));
+
     auto transducerStack = t(Putter!(OutElementType, Out)(to));
     foreach (el; from)
     {
@@ -150,7 +152,7 @@ unittest
 
     auto output = appender!(int[])();
 
-    [1, 2, 3, 4].into!(int)(comp(taker(2), mapper!minus, mapper!twice), output);
+    [1, 2, 3, 4].into(comp(taker(2), mapper!minus, mapper!twice), output);
     assert(output.data == [-2, -4]);
 }
 
@@ -184,9 +186,11 @@ public struct TransducedSink(Putter)
 /++
 Returns an ExtendedOutputRange (see $(D transduced.core.isExtendedOutputRange)) of type $(D TransducedSink) which forwards input transformed by transducer $(D t) to OutputRange $(D o). $(D o) has to take $(D OutElementType) as input.
 +/
-auto transduceSink(OutElementType, Transducer, OutputRange)(Transducer t, OutputRange o) if (
-        isOutputRange!(OutputRange, OutElementType) && isTransducer!(Transducer, OutElementType))
+auto transduceSink(InputElementType, Transducer, OutputRange)(Transducer t, OutputRange o) if (isTransducer!(Transducer, Transducer.OutputType!InputElementType) 
+                                                                                               && isOutputRange!(OutputRange, Transducer.OutputType!InputElementType))
 {
+    alias OutElementType = Transducer.OutputType!(InputElementType);
+
     alias putterType = typeof(t(Putter!(OutElementType, OutputRange)(o)));
     return TransducedSink!(putterType)(t(Putter!(OutElementType, OutputRange)(o)));
 }

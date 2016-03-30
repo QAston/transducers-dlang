@@ -65,29 +65,42 @@ unittest
     assert(requiresForward(own(a)) == 3);
 }
 
-/++
-Returns true when given static function can be wrapped using $(D StaticFn)
-+/
-template isStaticFn(alias f)
-{
-    enum bool isStaticFn = __traits(isStaticFunction, f);
-}
-
 struct MapFnWrapper(alias f)
 {
-    alias ParameterType = Parameters!f;
-    static pragma(inline, true) ReturnType!f opCall(ParameterType arg)
+    static if (isCallable!(f))
     {
-        return f(arg);
+        alias ParameterType = Parameters!f;
+        static pragma(inline, true) ReturnType!f opCall(ParameterType arg)
+        {
+            return f(arg);
+        }
+    }
+    else
+    {
+        pragma(msg, f);
+        auto opCall(T)(T t)
+        {
+            return f(t);
+        }
     }
 }
 
 struct PredFnWrapper(alias pred)
 {
-    alias ParameterType = Parameters!pred;
-    static pragma(inline, true) bool opCall(ParameterType arg)
+    static if (isCallable!(pred))
     {
-        return pred(arg);
+        alias ParameterType = Parameters!pred;
+        static pragma(inline, true) bool opCall(ParameterType arg)
+        {
+            return pred(arg);
+        }
+    }
+    else
+    {
+        bool opCall(T)(T t)
+        {
+            return pred(t);
+        }
     }
 }
 

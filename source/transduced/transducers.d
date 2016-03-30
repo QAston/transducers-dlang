@@ -13,9 +13,9 @@ import std.range;
 /++
 Returns a transducer modifying the putter by transforming each input using $(D f) function. 
 +/
-auto mapper(alias f)() if (isStaticFn!f)
+auto mapper(alias f)()
 {
-    return mapper(MapFnWrapper!f.init);
+    return mapper((MapFnWrapper!f).init);
 }
 /// ditto
 auto mapper(F)(F f)
@@ -30,7 +30,7 @@ unittest
     import transduced.range;
 
     auto output = appender!(int[])();
-    [1, 2, 3, 4].into!int(mapper!((int x) => -x), output);
+    [1, 2, 3, 4].into(mapper!((int x) => -x), output);
     assert(output.data == [-1, -2, -3, -4]);
 }
 
@@ -66,6 +66,7 @@ private struct Mapper(F)
 
         return PutterDecorator(own(putter), own(f));
     }
+    alias OutputType(InputType) = typeof(f(InputType.init));
 }
 
 private struct TakeCnt
@@ -100,7 +101,7 @@ unittest
     import transduced.range;
 
     auto output = appender!(int[])();
-    [1, 2, 3, 4].into!int(taker(2), output);
+    [1, 2, 3, 4].into(taker(2), output);
     assert(output.data == [1, 2]);
 }
 
@@ -118,7 +119,7 @@ unittest
     import transduced.range;
 
     auto output = appender!(int[])();
-    [1, 2, 3, 4, 1, 2].into!int(taker((int x) => x < 4), output);
+    [1, 2, 3, 4, 1, 2].into(taker((int x) => x < 4), output);
     assert(output.data == [1, 2, 3]);
 }
 
@@ -157,6 +158,7 @@ private struct Taker(F)
 
         return PutterDecorator(own(putter), own(f));
     }
+    alias OutputType(InputType) = InputType;
 }
 
 private struct DropCnt
@@ -188,7 +190,7 @@ unittest
     import transduced.range;
 
     auto output = appender!(int[])();
-    [1, 2, 3, 4].into!int(dropper(1), output);
+    [1, 2, 3, 4].into(dropper(1), output);
     assert(output.data == [2, 3, 4]);
 }
 
@@ -206,7 +208,7 @@ unittest
     import transduced.range;
 
     auto output = appender!(int[])();
-    [1, 2, 3, 4, 1, 2].into!int(dropper((int x) => x < 4), output);
+    [1, 2, 3, 4, 1, 2].into(dropper((int x) => x < 4), output);
     assert(output.data == [4, 1, 2]);
 }
 
@@ -247,12 +249,13 @@ private struct Dropper(F)
 
         return PutterDecorator(own(putter), own(f));
     }
+    alias OutputType(InputType) = InputType;
 }
 
 /++
 Returns a transducer modifying the putter by forwarding only inputs satisfying $(D pred).
 +/
-auto filterer(alias pred)() if (isStaticFn!pred)
+auto filterer(alias pred)()
 {
     return filterer(PredFnWrapper!pred.init);
 }
@@ -269,7 +272,7 @@ unittest
     import transduced.range;
 
     auto output = appender!(int[])();
-    [1, 2, 3, 4].into!int(filterer!((int x) => x % 2 == 1), output);
+    [1, 2, 3, 4].into(filterer!((int x) => x % 2 == 1), output);
     assert(output.data == [1, 3]);
 }
 
@@ -302,6 +305,7 @@ private struct Filterer(F)
 
         return PutterDecorator(own(putter), own(f));
     }
+    alias OutputType(InputType) = InputType;
 }
 
 /++
@@ -319,7 +323,7 @@ unittest
     import transduced.range;
 
     auto output = appender!(int[])();
-    [[1, 2], [3, 4]].into!int(flattener!(int[]), output);
+    [[1, 2], [3, 4]].into(flattener!(int[]), output);
     assert(output.data == [1, 2, 3, 4]);
 }
 
@@ -349,12 +353,16 @@ private struct Flattener(InputRange)
 
         return PutterDecorator(own(putter));
     }
+    template OutputType(InputType) if (isInputRange!InputType) {
+        alias OutputType = ElementType!(InputType);
+    }
+    
 }
 
 /++
 Composition of mapper and flattener.
 +/
-pragma(inline, true) auto flatMapper(InputRange, alias f)() if (isStaticFn!f)
+pragma(inline, true) auto flatMapper(InputRange, alias f)()
 {
     return flatMapper!InputRange(MapFnWrapper!(f).init);
 }
@@ -370,7 +378,7 @@ unittest
     import transduced.range;
 
     auto output = appender!(int[])();
-    [1, 2, 3, 4].into!int(flatMapper!(int[], (int x) => [x, x])(), output);
+    [1, 2, 3, 4].into(flatMapper!(int[], (int x) => [x, x])(), output);
     assert(output.data == [1, 1, 2, 2, 3, 3, 4, 4]);
 }
 
@@ -434,6 +442,7 @@ private struct Buffer
         return PutterDecorator!(typeof(putterBuffer!(Decorated.InputType)()))(
             own(putter), putterBuffer!(Decorated.InputType)());
     }
+    alias OutputType(InputType) = InputType;
 }
 
 /++
@@ -451,7 +460,7 @@ unittest
     import transduced.range;
 
     auto output = appender!(int[])();
-    [1, 2, 3, 4].into!int(comp(mapper!((int x) => -x), taker(2)), output);
+    [1, 2, 3, 4].into(comp(mapper!((int x) => -x), taker(2)), output);
     assert(output.data == [-1, -2]);
 }
 
@@ -486,6 +495,8 @@ private struct Composer(T, U)
     {
         return t(u(own(next)));
     }
+
+    alias OutputType(InputType) = U.OutputType!(T.OutputType!(InputType));
 }
 
 private struct StrideFilter
@@ -519,7 +530,7 @@ unittest
     import transduced.range;
 
     auto output = appender!(int[])();
-    [1, 2, 3, 4, 5, 6, 7].into!int(strider(2), output);
+    [1, 2, 3, 4, 5, 6, 7].into(strider(2), output);
     assert(output.data == [2, 4, 6]);
 }
 
@@ -539,7 +550,7 @@ unittest
     auto sideffectOutput = appender!(int[])();
 
     auto output = appender!(int[])();
-    [1, 2, 3, 4].into!int(doer((int i) => std.range.put(sideffectOutput, i)), output);
+    [1, 2, 3, 4].into(doer((int i) => std.range.put(sideffectOutput, i)), output);
     assert(output.data == [1, 2, 3, 4]);
     assert(output.data == sideffectOutput.data);
 }
@@ -573,6 +584,7 @@ private struct Doer(F)
 
         return PutterDecorator(own(putter), own(f));
     }
+    alias OutputType(InputType) = InputType;
 }
 
 /++
@@ -581,7 +593,7 @@ Returns a transducer modifying the putter by transforming chunks of $(D chunkSiz
 Params:
 f: `auto function(scope InputType[] chunkView)` - don't escape/return $(D chunkView) or its contents, copy or move them out to use outside $(D f)
 +/
-auto chunkMapper(alias f)(size_t chunkSize) if (isStaticFn!f)
+auto chunkMapper(alias f)(size_t chunkSize)
 {
     return chunkMapper(MapFnWrapper!f.init, chunkSize);
 }
@@ -600,7 +612,7 @@ unittest
     auto output = appender!(int[][])();
     // the chunkView.dup is REQUIRED here because the reference to it is returned from the function
     // you can use any other method to allocate an array to return
-    [1, 2, 3, 4, 5, 6, 7].into!(int[])(
+    [1, 2, 3, 4, 5, 6, 7].into(
         chunkMapper!((scope int[] chunkView) => chunkView.dup)(3), output);
     assert(output.data == [[1, 2, 3], [4, 5, 6], [7]]);
 }
@@ -612,7 +624,7 @@ unittest
     import transduced.range;
 
     auto output = appender!(int[])();
-    [1, 2, 3, 4, 5, 6, 7].into!(int)(
+    [1, 2, 3, 4, 5, 6, 7].into(
         chunkMapper!((scope int[] chunkView) => chunkView[0])(3), output);
     assert(output.data == [1, 4, 7]);
 }
@@ -668,6 +680,7 @@ private struct ChunkMapper(F)
         return PutterDecorator!(typeof(putterBuffer!(BufferElementType)()))(own(putter),
             putterBuffer!(BufferElementType)(chunkSize), own(f));
     }
+    alias OutputType(InputType) = typeof(f([InputType.init]));
 }
 
 version (unittest)
@@ -685,14 +698,14 @@ version (unittest)
     {
 
         int[] ar = new int[](4);
-        [1, 2, 3, 4].into!int(mapper!(minus), ar);
+        [1, 2, 3, 4].into(mapper!(minus), ar);
         assert(ar == [-1, -2, -3, -4]);
     }
 
     unittest
     {
         int[] ar = new int[](4);
-        [1, 2, 3, 4].into!int(taker(2), ar);
+        [1, 2, 3, 4].into(taker(2), ar);
         assert(ar == [1, 2, 0, 0]);
     }
 
@@ -700,7 +713,7 @@ version (unittest)
     {
         int[] ar = new int[](4);
 
-        [1, 2, 3, 4].into!int(comp(taker(2), mapper!minus), ar);
+        [1, 2, 3, 4].into(comp(taker(2), mapper!minus), ar);
         assert(ar == [-1, -2, 0, 0]);
     }
 
@@ -714,20 +727,20 @@ version (unittest)
 
         int[] ar = new int[](4);
 
-        [1, 2, 3, 4].into!int(comp(taker(2), mapper!minus, mapper!twice), ar);
+        [1, 2, 3, 4].into(comp(taker(2), mapper!minus, mapper!twice), ar);
         assert(ar == [-2, -4, 0, 0]);
     }
 
     unittest
     {
-        auto res = transduceSource!(int)([1, 2, 3, 4], comp(taker(2),
+        auto res = transduceSource([1, 2, 3, 4], comp(taker(2),
             mapper!minus, mapper!twice)).array();
         assert(res == [-2, -4]);
     }
 
     unittest
     {
-        auto res = transduceSource!(int)([[1, 2, 3, 4]], flattener!(int[])).array();
+        auto res = transduceSource([[1, 2, 3, 4]], flattener!(int[])).array();
         assert(res == [1, 2, 3, 4]);
     }
 
@@ -738,7 +751,7 @@ version (unittest)
 
     unittest
     {
-        auto res = transduceSource!(int)([1, 2, 3, 4], filterer!even()).array();
+        auto res = transduceSource([1, 2, 3, 4], filterer!even()).array();
         assert(res == [2, 4]);
     }
 
@@ -768,14 +781,14 @@ version (unittest)
 
     unittest
     {
-        auto res = transduceSource!(int)([1, 2, 3, 4], flatMapper!(int[], duplicate)).array();
+        auto res = transduceSource([1, 2, 3, 4], flatMapper!(int[], duplicate)).array();
         assert(res == [1, 1, 2, 2, 3, 3, 4, 4]);
     }
 
     unittest
     {
         auto dupper = Dup!int(2);
-        auto res = transduceSource!(int)([1, 2, 3, 4], flatMapper!(int[])(dupper)).array();
+        auto res = transduceSource([1, 2, 3, 4], flatMapper!(int[])(dupper)).array();
         assert(res == [1, 1, 2, 2, 3, 3, 4, 4]);
     }
 
@@ -783,7 +796,7 @@ version (unittest)
     {
         auto dupper = Dup!int(2);
         int a = 2;
-        auto res = transduceSource!(int)([1, 2, 3, 4], flatMapper!(int[])((int x) => [a,
+        auto res = transduceSource([1, 2, 3, 4], flatMapper!(int[])((int x) => [a,
             a])).array();
         assert(res == [2, 2, 2, 2, 2, 2, 2, 2]);
     }
