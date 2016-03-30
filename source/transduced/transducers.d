@@ -9,9 +9,11 @@ import std.range;
 
 // function returning a transducer
 // transducer holds the info about what to do with input, but doesn't know the overall job
-// opCall applies the PutterDecorator to given Putter
+// wrap wraps the given Putter in PutterDecorator
 /++
 Returns a transducer modifying the putter by transforming each input using $(D f) function. 
+
+Only pass static functions to alias variant, passing delegates will result in can't find overload error. Can't guard that reliably, sorry.
 +/
 auto mapper(alias f)()
 {
@@ -30,7 +32,7 @@ unittest
     import transduced.range;
 
     auto output = appender!(int[])();
-    [1, 2, 3, 4].into(mapper!((int x) => -x), output);
+    [1, 2, 3, 4].into(mapper!((x) => -x), output);
     assert(output.data == [-1, -2, -3, -4]);
 }
 
@@ -45,12 +47,11 @@ private struct Mapper(F)
         this.f = own(f);
     }
 
-    auto opCall(Decorated)(Decorated putter) if (isPutter!Decorated)
+    auto wrap(InType, Decorated)(Decorated putter) if (isPutter!Decorated)
     {
         static struct PutterDecorator
         {
-            mixin PutterDecoratorMixin!(Decorated);
-            alias InputType = Parameters!(f)[0];
+            mixin PutterDecoratorMixin!(Decorated, InType);
             private F f;
             private this(Decorated putter, F f)
             {
@@ -107,10 +108,17 @@ unittest
 
 /++
 Returns a transducer modifying the putter by taking inputs while $(D p $(LPAREN)input$(RPAREN) == true) and skipping remaining ones.
+
+Only pass static functions to alias variant, passing delegates will result in can't find overload error. Can't guard that reliably, sorry.
 +/
 auto taker(PRED)(PRED p)
 {
     return Taker!PRED(p);
+}
+/// ditto
+pragma(inline, true) auto taker(alias pred)()
+{
+    return taker(PredFnWrapper!pred.init);
 }
 ///
 unittest
@@ -119,7 +127,7 @@ unittest
     import transduced.range;
 
     auto output = appender!(int[])();
-    [1, 2, 3, 4, 1, 2].into(taker((int x) => x < 4), output);
+    [1, 2, 3, 4, 1, 2].into(taker!((x) => x < 4), output);
     assert(output.data == [1, 2, 3]);
 }
 
@@ -131,11 +139,11 @@ private struct Taker(F)
         this.f = own(f);
     }
 
-    auto opCall(Decorated)(Decorated putter) if (isPutter!Decorated)
+    auto wrap(InType, Decorated)(Decorated putter) if (isPutter!Decorated)
     {
         static struct PutterDecorator
         {
-            mixin PutterDecoratorMixin!(Decorated);
+            mixin PutterDecoratorMixin!(Decorated, InType);
             private F f;
             private this(Decorated putter, F f)
             {
@@ -196,10 +204,17 @@ unittest
 
 /++
 Returns a transducer modifying the putter by dropping inputs while $(D p $(LPAREN)input$(RPAREN) == true), and using all the rest.
+
+Only pass static functions to alias variant, passing delegates will result in can't find overload error. Can't guard about that reliably, sorry.
 +/
 auto dropper(PRED)(PRED p)
 {
     return Dropper!PRED(p);
+}
+/// ditto
+pragma(inline, true) auto dropper(alias pred)()
+{
+    return dropper(PredFnWrapper!pred.init);
 }
 ///
 unittest
@@ -208,7 +223,7 @@ unittest
     import transduced.range;
 
     auto output = appender!(int[])();
-    [1, 2, 3, 4, 1, 2].into(dropper((int x) => x < 4), output);
+    [1, 2, 3, 4, 1, 2].into(dropper!((x) => x < 4), output);
     assert(output.data == [4, 1, 2]);
 }
 
@@ -220,11 +235,11 @@ private struct Dropper(F)
         this.f = own(f);
     }
 
-    auto opCall(Decorated)(Decorated putter) if (isPutter!Decorated)
+    auto wrap(InType, Decorated)(Decorated putter) if (isPutter!Decorated)
     {
         static struct PutterDecorator
         {
-            mixin PutterDecoratorMixin!(Decorated);
+            mixin PutterDecoratorMixin!(Decorated, InType);
             private F f;
             private bool dropped;
             private this(Decorated putter, F f)
@@ -254,6 +269,8 @@ private struct Dropper(F)
 
 /++
 Returns a transducer modifying the putter by forwarding only inputs satisfying $(D pred).
+
+Only pass static functions to alias variant, passing delegates will result in can't find overload error. Can't guard that reliably, sorry.
 +/
 auto filterer(alias pred)()
 {
@@ -272,7 +289,7 @@ unittest
     import transduced.range;
 
     auto output = appender!(int[])();
-    [1, 2, 3, 4].into(filterer!((int x) => x % 2 == 1), output);
+    [1, 2, 3, 4].into(filterer!((x) => x % 2 == 1), output);
     assert(output.data == [1, 3]);
 }
 
@@ -284,11 +301,11 @@ private struct Filterer(F)
         this.f = own(f);
     }
 
-    auto opCall(Decorated)(Decorated putter) if (isPutter!Decorated)
+    auto wrap(InType, Decorated)(Decorated putter) if (isPutter!Decorated)
     {
         static struct PutterDecorator
         {
-            mixin PutterDecoratorMixin!(Decorated);
+            mixin PutterDecoratorMixin!(Decorated, InType);
             private F f;
             private this(Decorated putter, F f)
             {
@@ -311,9 +328,9 @@ private struct Filterer(F)
 /++
 Returns a transducer modifying the putter by converting $(D InputRange) inputs to a series of inputs with all $(D InputRange) elements.
 +/
-Flattener!InputRange flattener(InputRange)() if (isInputRange!InputRange)
+Flattener flattener()
 {
-    return Flattener!InputRange.init;
+    return Flattener.init;
 }
 
 ///
@@ -323,24 +340,22 @@ unittest
     import transduced.range;
 
     auto output = appender!(int[])();
-    [[1, 2], [3, 4]].into(flattener!(int[]), output);
+    [[1, 2], [3, 4]].into(flattener, output);
     assert(output.data == [1, 2, 3, 4]);
 }
 
 //transducer which calls put function more than once
-private struct Flattener(InputRange)
+private struct Flattener
 {
-    auto opCall(Decorated)(Decorated putter) if (isPutter!Decorated)
+    auto wrap(InType, Decorated)(Decorated putter) if (isPutter!Decorated)
     {
         static struct PutterDecorator
         {
-            mixin PutterDecoratorMixin!(Decorated);
+            mixin PutterDecoratorMixin!(Decorated, InType);
             private this(Decorated putter)
             {
                 this.putter = own(putter);
             }
-
-            alias InputType = InputRange;
 
             void put(InputType elem)
             {
@@ -353,23 +368,23 @@ private struct Flattener(InputRange)
 
         return PutterDecorator(own(putter));
     }
-    template OutputType(InputType) if (isInputRange!InputType) {
-        alias OutputType = ElementType!(InputType);
-    }
+    alias OutputType(InputType) = ElementType!(InputType);
     
 }
 
 /++
 Composition of mapper and flattener.
+
+Only pass static functions to alias variant, passing delegates will result in can't find overload error. Can't guard that reliably, sorry.
 +/
-pragma(inline, true) auto flatMapper(InputRange, alias f)()
+pragma(inline, true) auto flatMapper(alias f)()
 {
-    return flatMapper!InputRange(MapFnWrapper!(f).init);
+    return flatMapper(MapFnWrapper!(f).init);
 }
 /// ditto
-auto flatMapper(InputRange, F)(F f)
+auto flatMapper(F)(F f)
 {
-    return comp(mapper(own(f)), flattener!InputRange());
+    return comp(mapper(own(f)), flattener());
 }
 ///
 unittest
@@ -378,7 +393,7 @@ unittest
     import transduced.range;
 
     auto output = appender!(int[])();
-    [1, 2, 3, 4].into(flatMapper!(int[], (int x) => [x, x])(), output);
+    [1, 2, 3, 4].into(flatMapper!((x) => [x, x])(), output);
     assert(output.data == [1, 1, 2, 2, 3, 3, 4, 4]);
 }
 
@@ -413,11 +428,11 @@ unittest
 
 private struct Buffer
 {
-    auto opCall(Decorated)(Decorated putter) if (isPutter!Decorated)
+    auto wrap(InType, Decorated)(Decorated putter) if (isPutter!Decorated)
     {
         static struct PutterDecorator(Buffer)
         {
-            mixin PutterDecoratorMixin!(Decorated);
+            mixin PutterDecoratorMixin!(Decorated, InType);
             private Buffer buffer;
             private this(Decorated putter, Buffer buffer)
             {
@@ -460,7 +475,7 @@ unittest
     import transduced.range;
 
     auto output = appender!(int[])();
-    [1, 2, 3, 4].into(comp(mapper!((int x) => -x), taker(2)), output);
+    [1, 2, 3, 4].into(comp(mapper!((x) => -x), taker(2)), output);
     assert(output.data == [-1, -2]);
 }
 
@@ -491,9 +506,9 @@ private struct Composer(T, U)
         this.u = own(u);
     }
 
-    auto opCall(Decorated)(Decorated next)
+    auto wrap(InType, Decorated)(Decorated next)
     {
-        return t(u(own(next)));
+        return t.wrap!(InType)(u.wrap!(T.OutputType!(InType))(own(next)));
     }
 
     alias OutputType(InputType) = U.OutputType!(T.OutputType!(InputType));
@@ -563,11 +578,11 @@ private struct Doer(F)
         this.f = own(f);
     }
 
-    auto opCall(Decorated)(Decorated putter) if (isPutter!Decorated)
+    auto wrap(InType, Decorated)(Decorated putter) if (isPutter!Decorated)
     {
         static struct PutterDecorator
         {
-            mixin PutterDecoratorMixin!(Decorated);
+            mixin PutterDecoratorMixin!(Decorated, InType);
             private F f;
             private this(Decorated putter, F f)
             {
@@ -590,8 +605,10 @@ private struct Doer(F)
 /++
 Returns a transducer modifying the putter by transforming chunks of $(D chunkSize) using $(D f) function.
 
+Only pass static functions to alias variant, passing delegates will result in can't find overload error. Can't guard that reliably, sorry.
+
 Params:
-f: `auto function(scope InputType[] chunkView)` - don't escape/return $(D chunkView) or its contents, copy or move them out to use outside $(D f)
+f: auto function(scope InputType[] chunkView) - don't escape/return $(D chunkView) or its contents, copy or move them out to use outside $(D f)
 +/
 auto chunkMapper(alias f)(size_t chunkSize)
 {
@@ -640,12 +657,11 @@ private struct ChunkMapper(F)
         this.chunkSize = chunkSize;
     }
 
-    auto opCall(Decorated)(Decorated putter) if (isPutter!Decorated)
+    auto wrap(InType, Decorated)(Decorated putter) if (isPutter!Decorated)
     {
         static struct PutterDecorator(Buffer)
         {
-            mixin PutterDecoratorMixin!(Decorated);
-            alias InputType = ElementType!(Parameters!(f)[0]);
+            mixin PutterDecoratorMixin!(Decorated, InType);
             private Buffer buffer;
             private F f;
             private this(Decorated putter, Buffer buffer, F f)
@@ -740,7 +756,7 @@ version (unittest)
 
     unittest
     {
-        auto res = transduceSource([[1, 2, 3, 4]], flattener!(int[])).array();
+        auto res = transduceSource([[1, 2, 3, 4]], flattener).array();
         assert(res == [1, 2, 3, 4]);
     }
 
@@ -781,14 +797,14 @@ version (unittest)
 
     unittest
     {
-        auto res = transduceSource([1, 2, 3, 4], flatMapper!(int[], duplicate)).array();
+        auto res = transduceSource([1, 2, 3, 4], flatMapper!(duplicate)).array();
         assert(res == [1, 1, 2, 2, 3, 3, 4, 4]);
     }
 
     unittest
     {
         auto dupper = Dup!int(2);
-        auto res = transduceSource([1, 2, 3, 4], flatMapper!(int[])(dupper)).array();
+        auto res = transduceSource([1, 2, 3, 4], flatMapper(dupper)).array();
         assert(res == [1, 1, 2, 2, 3, 3, 4, 4]);
     }
 
@@ -796,7 +812,7 @@ version (unittest)
     {
         auto dupper = Dup!int(2);
         int a = 2;
-        auto res = transduceSource([1, 2, 3, 4], flatMapper!(int[])((int x) => [a,
+        auto res = transduceSource([1, 2, 3, 4], flatMapper((int x) => [a,
             a])).array();
         assert(res == [2, 2, 2, 2, 2, 2, 2, 2]);
     }

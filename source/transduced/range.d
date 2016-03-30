@@ -15,13 +15,15 @@ Returns a lazy range, each item is taken from given $(D inputRange) and lazily t
 +/
 auto transduceSource(R, Transducer)(R inputRange, Transducer t) if (isInputRange!R && isTransducer!(Transducer, ElementType!R))
 {
-    alias OutElementType = Transducer.OutputType!(ElementType!(R));
+    alias InElementType = ElementType!(R);
+    alias OutElementType = Transducer.OutputType!(InElementType);
+
 
     alias bufferType = typeof(putterBuffer!OutElementType());
-    alias putterType = typeof(t(Putter!(OutElementType,
+    alias putterType = typeof(t.wrap!InElementType(Putter!(OutElementType,
         bufferType)(putterBuffer!OutElementType())));
     return TransducedSource!(R, putterType, OutElementType)(inputRange,
-        t(Putter!(OutElementType, bufferType)(putterBuffer!OutElementType())));
+        t.wrap!InElementType(Putter!(OutElementType, bufferType)(putterBuffer!OutElementType())));
 }
 
 ///
@@ -131,9 +133,10 @@ Populates output range $(D to) with contents of input range $(D from) transforme
 auto into(R, Transducer, Out)(R from, Transducer t, Out to) if (
         isInputRange!R && isTransducer!(Transducer, ElementType!R))
 {
-    alias OutElementType = Transducer.OutputType!(ElementType!(R));
+    alias InElementType = ElementType!(R);
+    alias OutElementType = Transducer.OutputType!(InElementType);
 
-    auto transducerStack = t(Putter!(OutElementType, Out)(to));
+    auto transducerStack = t.wrap!InElementType(Putter!(OutElementType, Out)(to));
     foreach (el; from)
     {
         transducerStack.put(el);
@@ -191,8 +194,8 @@ auto transduceSink(InputElementType, Transducer, OutputRange)(Transducer t, Outp
 {
     alias OutElementType = Transducer.OutputType!(InputElementType);
 
-    alias putterType = typeof(t(Putter!(OutElementType, OutputRange)(o)));
-    return TransducedSink!(putterType)(t(Putter!(OutElementType, OutputRange)(o)));
+    alias putterType = typeof(t.wrap!InputElementType(Putter!(OutElementType, OutputRange)(o)));
+    return TransducedSink!(putterType)(t.wrap!InputElementType(Putter!(OutElementType, OutputRange)(o)));
 }
 
 ///

@@ -77,7 +77,6 @@ struct MapFnWrapper(alias f)
     }
     else
     {
-        pragma(msg, f);
         auto opCall(T)(T t)
         {
             return f(t);

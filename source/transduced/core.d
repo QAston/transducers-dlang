@@ -55,12 +55,15 @@ unittest {
     static assert (isPutter!(Putter!(int, int[])));
 }
 /++
-Is true when $(D T) is a transducer type which can process $(D InputType) input. Transducers are factory objects which take a $(D Putter) objects to decorate and return those object wrapped in a PutterDecorator object. The returned PutterDecorators work with $(D InputType) input.
+Is true when $(D T) is a transducer type which can process $(D InputType) input.
+
+Transducer is an object with $(D wrap!InputType) method taking a (possibly already $(D Decorated)) $(D Putter) object to decorate and returning a DecoratedPutter ($(D Putter) wrapped in $(PutterDecorator) instance). The returned DecoratedPutter accepts $(D InputType) input.
+Transducer also has OutputType(InputType) alias which defines what type will be passed to DecoratedPutter on given input.
 +/
 enum isTransducer(T, InputType) = is(typeof((inout int = 0)
                                  {
                                      alias OutputType = T.OutputType!(InputType);
-                                     auto decorated = T.init(Putter!(OutputType, void delegate(OutputType)).init);
+                                     auto decorated = T.init.wrap!InputType(Putter!(OutputType, void delegate(OutputType)).init);
                                      static assert(isPutter!(typeof(decorated)));
                                  }));
 
@@ -68,14 +71,17 @@ enum isTransducer(T, InputType) = is(typeof((inout int = 0)
 unittest{
     // a dummy transducer object
     struct Tducer{
-        auto opCall(Decorated)(Decorated putter) if (isPutter!Decorated) {
+        auto wrap(InType, Decorated)(Decorated putter) if (isPutter!Decorated) {
             struct PutterDecorator {
-                mixin PutterDecoratorMixin!(Decorated);
+                mixin PutterDecoratorMixin!(Decorated, InType);
+                this(Decorated putter) {
+                    this.putter = putter;
+                }
                 void put(InputType p) {
                     std.range.put(putter, p);
                 }
             }
-            return PutterDecorator.init;
+            return PutterDecorator(putter);
         }
         alias OutputType(InputType) = InputType;
     }
@@ -85,32 +91,32 @@ unittest{
 /++
 Mixin used to implement common code for all putter decorators.
 
-Specific putter decorators provide additional capabilities to $(D Putter) by wrapping it and forwarding calls to the decorated $(D putter) object.
+Specific putter decorators provide additional capabilities to $(D Putter) by wrapping it and forwarding calls to the $(D Decorated) $(D putter) object.
 For more information on how decorators work google "Decorator design pattern".
 +/
-mixin template PutterDecoratorMixin(Decorated)
+mixin template PutterDecoratorMixin(Decorated, InType)
 {
     private Decorated putter;
 
     /++
-    Forwards to the decorated $(D Putter.isAcceptingInput). Do not override.
+    Forwards to the $(D Decorated) $(D Putter.isAcceptingInput). Do not override.
     +/
     pragma(inline, true) bool isAcceptingInput()
     {
         return putter.isAcceptingInput();
     }
     /++
-    Forwards to the decorated $(D Putter.markNotAcceptingInput). Do not override.
+    Forwards to the $(D Decorated) $(D Putter.markNotAcceptingInput). Do not override.
     +/
     pragma(inline, true) void markNotAcceptingInput()
     {
         putter.markNotAcceptingInput();
     }
     /++
-    PutterDecorators which do buffering need to override this method. By default forwards to the decorated $(Putter.flush).
+    PutterDecorators which do buffering need to override this method. By default forwards to the $(D Decorated) $(Putter.flush).
 
-    This method should $(D Putter.put) any buffered data into the decorated $(D putter).
-    After all processing is done the decorator should forward to the decorated $(D Putter.flush).
+    This method should $(D Putter.put) any buffered data into the $(D Decorated) $(D putter).
+    After all processing is done the decorator should forward to the $(D Decorated) $(D Putter.flush).
     +/
     pragma(inline, true) void flush()
     {
@@ -118,7 +124,7 @@ mixin template PutterDecoratorMixin(Decorated)
     }
 
     /++
-    Forwards to the decorated $(D Putter.to). Do not override.
+    Forwards to the $(D Decorated) $(D Putter.to). Do not override.
     +/
     pragma(inline, true) ref auto to() @property
     {
@@ -126,14 +132,13 @@ mixin template PutterDecoratorMixin(Decorated)
     }
 
     /++
-    By default PutterDecorators take same kind of input as the decorated putter.
-    In a case when types are different this needs to be overridden.
+    Type of input taken by $(D Putter.put).
     +/
-    alias InputType = Decorated.InputType;
+    alias InputType = InType;
 }
 
 /++
-Wraps an output range + put function in a struct providing early termination, buffering, and flushing.
+Wraps an $(D OutputRange) + $(D std.range.put) function in a struct providing early termination, buffering, and flushing.
 +/
 public struct Putter(ElementType, OutputRange) if (isOutputRange!(OutputRange, ElementType))
 {
