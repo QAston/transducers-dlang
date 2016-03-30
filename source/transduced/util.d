@@ -91,20 +91,6 @@ struct PredFnWrapper(alias pred)
     }
 }
 
-// TODO: implement those
-package enum isPutter(T) = true;
-
-package enum isTransducer(T) = true; // TODO tests for work with non-copyable putters
-
-package enum isPutterBuffer(T) = true;
-
-version (unittest)
-{
-    void testPutterBuffer()
-    {
-    }
-}
-
 /++
 A queue like buffer that works in 2 phases: filling element by element using $(D put) and removing element by element using removeFront() until it's empty.
 

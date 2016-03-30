@@ -6,8 +6,80 @@ module transduced.core;
 import std.range;
 import std.array;
 import transduced.util;
+import std.traits : hasMember;
 
-//todo: isPutter template
+/++
+An extended output range is a $(D std.range.OutputRange) with 2 additional capabilities: early termination using $(D O.isAcceptingInput()) and buffering using $(D O.flush()) which flushes the range buffer.
+
+All extended output ranges are also regular output ranges.
+All $(D Putter)s are also extended output ranges.
++/
+enum isExtendedOutputRange(O, ElementType) = isOutputRange!(O,ElementType) && is(typeof((inout int = 0)
+                                                                                       {
+                                                                                           O o = O.init;
+                                                                                           bool a = o.isAcceptingInput();
+                                                                                           o.flush();
+                                                                                       }));
+
+///
+unittest {
+    static assert (isExtendedOutputRange!(Putter!(int, int[]), int));
+}
+
+private template baseInputType(P)
+{
+    static if (hasMember!(P, "decorated")) {
+        alias baseInputType = baseInputType!(typeof(P.decorated));
+    }
+    else {
+        alias baseInputType = P.InputType;
+    }
+}
+
+
+/++
+Is true when P is a type providing $(D transduced.core.Putter) methods.
+
+All DecoratedPutters must pass this check too.
+Every putter is also $(D isExtendedOutputRange).
++/
+enum isPutter(P) = isExtendedOutputRange!(P,P.InputType) && is(typeof((inout int = 0)
+                                                                      {
+                                                                          P p = P.init;
+                                                                          p.markNotAcceptingInput();
+                                                                          std.range.put(p.to(), (baseInputType!P).init);
+                                                                      }));
+
+///
+unittest {
+    static assert (isPutter!(Putter!(int, int[])));
+}
+/++
+Is true when $(D T) is a transducer type capable of producing output of type $(D OutputType). Transducers are factory objects which take a $(D Putter) objects to decorate and return those object wrapped in a PutterDecorator object.
++/
+enum isTransducer(T, OutputType) = is(typeof((inout int = 0)
+                                 {
+                                     auto decorated = T.init(Putter!(OutputType, void delegate(OutputType)).init);
+                                     static assert(isPutter!(typeof(decorated)));
+                                 }));
+
+///
+unittest{
+    // a dummy transducer object
+    struct Tducer{
+        auto opCall(Decorated)(Decorated putter) if (isPutter!Decorated) {
+            struct PutterDecorator {
+                mixin PutterDecoratorMixin!(Decorated);
+                void put(InputType p) {
+                    std.range.put(putter, p);
+                }
+            }
+            return PutterDecorator.init;
+        }
+    }
+    static assert (isTransducer!(Tducer, int));
+}
+
 
 /++
 Mixin used to implement common code for all putter decorators.
@@ -62,7 +134,7 @@ mixin template PutterDecoratorMixin(Decorated)
 /++
 Wraps an output range + put function in a struct providing early termination, buffering, and flushing.
 +/
-public struct Putter(ElementType, OutputRange)
+public struct Putter(ElementType, OutputRange) if (isOutputRange!(OutputRange, ElementType))
 {
     private OutputRange _to;
     private bool _acceptingInput;
@@ -92,9 +164,14 @@ public struct Putter(ElementType, OutputRange)
     Returns true when putter is no longer accepting input.
 
     Code using putters should check this after every step, and if false stop calling $(D Putter.put), call $(D Putter.flush) and finish.
+    Returns false if isExtendedOutputRange(OutputRange) and wrapped output range doesn't accept input anymore.
     +/
     bool isAcceptingInput()
     {
+        static if (isExtendedOutputRange!(OutputRange, InputType)) {
+            if (!_to.isAcceptingInput())
+                return false;
+        }
         return _acceptingInput;
     }
 
@@ -113,9 +190,13 @@ public struct Putter(ElementType, OutputRange)
     Flushes any input buffered so far by PutterDecorators using $(D Putter.put).
 
     Called when finished $(D Putter.put)ting.
+    If the wrapped OutputRange is an extended OutputRange, forward call to flush of that range.
     +/
     void flush()
     {
+        static if (isExtendedOutputRange!(OutputRange, InputType)) {
+            _to.flush();
+        }
     }
 
     /++
