@@ -9,8 +9,7 @@ import std.range;
 
 // function returning a transducer
 // transducer holds the info about what to do with input, but doesn't know the overall job
-// opCall applies the transducer to given putter
-// can be shared
+// opCall applies the PutterDecorator to given Putter
 /++
 Returns a transducer modifying the putter by transforming each input using $(D f) function. 
 +/
@@ -46,7 +45,7 @@ private struct Mapper(F)
         this.f = own(f);
     }
 
-    auto opCall(Decorated)(Decorated putter)
+    auto opCall(Decorated)(Decorated putter) if (isPutter!Decorated)
     {
         static struct PutterDecorator
         {
@@ -85,7 +84,7 @@ private:
 }
 
 // transducer with early termination
-// when transducer stack has isTerminatedEarly flag, TransduciblePutter must not supply more input (using put method)
+// when transducer stack has !isAcceptingInput flag no more input should be supplied to the Putter stack using Putter.put method
 // buffered transducer can still call put method in flush() to putter input buffered earlier
 /++
 Returns a transducer modifying the putter by using only first $(D howMany) inputs.
@@ -131,7 +130,7 @@ private struct Taker(F)
         this.f = own(f);
     }
 
-    auto opCall(Decorated)(Decorated putter)
+    auto opCall(Decorated)(Decorated putter) if (isPutter!Decorated)
     {
         static struct PutterDecorator
         {
@@ -219,7 +218,7 @@ private struct Dropper(F)
         this.f = own(f);
     }
 
-    auto opCall(Decorated)(Decorated putter)
+    auto opCall(Decorated)(Decorated putter) if (isPutter!Decorated)
     {
         static struct PutterDecorator
         {
@@ -282,7 +281,7 @@ private struct Filterer(F)
         this.f = own(f);
     }
 
-    auto opCall(Decorated)(Decorated putter)
+    auto opCall(Decorated)(Decorated putter) if (isPutter!Decorated)
     {
         static struct PutterDecorator
         {
@@ -327,7 +326,7 @@ unittest
 //transducer which calls put function more than once
 private struct Flattener(InputRange)
 {
-    auto opCall(Decorated)(Decorated putter)
+    auto opCall(Decorated)(Decorated putter) if (isPutter!Decorated)
     {
         static struct PutterDecorator
         {
@@ -406,7 +405,7 @@ unittest
 
 private struct Buffer
 {
-    auto opCall(Decorated)(Decorated putter)
+    auto opCall(Decorated)(Decorated putter) if (isPutter!Decorated)
     {
         static struct PutterDecorator(Buffer)
         {
@@ -553,7 +552,7 @@ private struct Doer(F)
         this.f = own(f);
     }
 
-    auto opCall(Decorated)(Decorated putter)
+    auto opCall(Decorated)(Decorated putter) if (isPutter!Decorated)
     {
         static struct PutterDecorator
         {
@@ -577,19 +576,19 @@ private struct Doer(F)
 }
 
 /++
-Returns a transducer modifying the putter by transforming partitions of $(D partitionSize) using $(D f) function.
+Returns a transducer modifying the putter by transforming chunks of $(D chunkSize) using $(D f) function.
 
 Params:
-f: `auto function(scope InputType[] partitionView)` - don't escape/return $(D partitionView) or its contents, copy or move them out to use outside $(D f)
+f: `auto function(scope InputType[] chunkView)` - don't escape/return $(D chunkView) or its contents, copy or move them out to use outside $(D f)
 +/
-auto partitionMapper(alias f)(size_t partitionSize) if (isStaticFn!f)
+auto chunkMapper(alias f)(size_t chunkSize) if (isStaticFn!f)
 {
-    return partitionMapper(MapFnWrapper!f.init, partitionSize);
+    return chunkMapper(MapFnWrapper!f.init, chunkSize);
 }
 /// ditto
-auto partitionMapper(F)(F f, size_t partitionSize)
+auto chunkMapper(F)(F f, size_t chunkSize)
 {
-    return PartitionMapper!F(own(f), partitionSize);
+    return ChunkMapper!F(own(f), chunkSize);
 }
 
 ///
@@ -599,10 +598,10 @@ unittest
     import transduced.range;
 
     auto output = appender!(int[][])();
-    // the partitionView.dup is REQUIRED here because the reference to it is returned from the function
+    // the chunkView.dup is REQUIRED here because the reference to it is returned from the function
     // you can use any other method to allocate an array to return
     [1, 2, 3, 4, 5, 6, 7].into!(int[])(
-        partitionMapper!((scope int[] partitionView) => partitionView.dup)(3), output);
+        chunkMapper!((scope int[] chunkView) => chunkView.dup)(3), output);
     assert(output.data == [[1, 2, 3], [4, 5, 6], [7]]);
 }
 
@@ -614,22 +613,22 @@ unittest
 
     auto output = appender!(int[])();
     [1, 2, 3, 4, 5, 6, 7].into!(int)(
-        partitionMapper!((scope int[] partitionView) => partitionView[0])(3), output);
+        chunkMapper!((scope int[] chunkView) => chunkView[0])(3), output);
     assert(output.data == [1, 4, 7]);
 }
 
-private struct PartitionMapper(F)
+private struct ChunkMapper(F)
 {
-    private size_t partitionSize;
+    private size_t chunkSize;
     private F f;
-    private this(F f, size_t partitionSize)
+    private this(F f, size_t chunkSize)
     {
-        assert(partitionSize >= 1);
+        assert(chunkSize >= 1);
         this.f = own(f);
-        this.partitionSize = partitionSize;
+        this.chunkSize = chunkSize;
     }
 
-    auto opCall(Decorated)(Decorated putter)
+    auto opCall(Decorated)(Decorated putter) if (isPutter!Decorated)
     {
         static struct PutterDecorator(Buffer)
         {
@@ -667,7 +666,7 @@ private struct PartitionMapper(F)
         alias BufferElementType = ElementType!(Parameters!(f)[0]);
 
         return PutterDecorator!(typeof(putterBuffer!(BufferElementType)()))(own(putter),
-            putterBuffer!(BufferElementType)(partitionSize), own(f));
+            putterBuffer!(BufferElementType)(chunkSize), own(f));
     }
 }
 

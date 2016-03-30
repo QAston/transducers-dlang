@@ -15,7 +15,7 @@ Returns a lazy range of $(D OutElementType) items, each item is taken from given
 
 Range element type must be given and cannot be deduced from transducers because transducers are independent of what they decorate, range in this case.
 +/
-auto transduceSource(OutElementType, R, Transducer)(R inputRange, Transducer t) if (isInputRange!R)
+auto transduceSource(OutElementType, R, Transducer)(R inputRange, Transducer t) if (isInputRange!R && isTransducer!(Transducer, OutElementType))
 {
     alias bufferType = typeof(putterBuffer!OutElementType());
     alias putterType = typeof(t(Putter!(OutElementType,
@@ -126,10 +126,10 @@ private struct TransducedSource(Range, Putter, ElementType) if (isInputRange!Ran
 }
 
 /++
-Populates output range $(D to) with contents of input range $(D from) transformed by transducer $(D t).
+Populates output range $(D to) with contents of input range $(D from) transformed by transducer $(D t). $(D to) has to take $(D OutElementType) as input.
 +/
 auto into(OutElementType, R, Transducer, Out)(R from, Transducer t, Out to) if (
-        isInputRange!R && isOutputRange!(Out, OutElementType))
+        isInputRange!R && isOutputRange!(Out, OutElementType) && isTransducer!(Transducer, OutElementType))
 {
     auto transducerStack = t(Putter!(OutElementType, Out)(to));
     foreach (el; from)
@@ -182,10 +182,10 @@ public struct TransducedSink(Putter)
 }
 
 /++
-Returns an output range of type TransducedSink which forwards input transformed by transducer $(D t) to output range $(D o).
+Returns an ExtendedOutputRange (see $(D transduced.core.isExtendedOutputRange)) of type $(D TransducedSink) which forwards input transformed by transducer $(D t) to OutputRange $(D o). $(D o) has to take $(D OutElementType) as input.
 +/
 auto transduceSink(OutElementType, Transducer, OutputRange)(Transducer t, OutputRange o) if (
-        isOutputRange!(OutputRange, OutElementType))
+        isOutputRange!(OutputRange, OutElementType) && isTransducer!(Transducer, OutElementType))
 {
     alias putterType = typeof(t(Putter!(OutElementType, OutputRange)(o)));
     return TransducedSink!(putterType)(t(Putter!(OutElementType, OutputRange)(o)));
@@ -200,6 +200,7 @@ unittest
     auto output = appender!(int[])();
     auto transducedOutput = transduceSink!int(mapper!((int x) => -x), output);
     static assert(isOutputRange!(typeof(transducedOutput), int));
+    static assert(isExtendedOutputRange!(typeof(transducedOutput), int));
     put(transducedOutput, 1);
     assert(output.data == [-1]);
     put(transducedOutput, 2);
