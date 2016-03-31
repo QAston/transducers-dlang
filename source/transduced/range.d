@@ -30,6 +30,14 @@ auto transduceSource(R, Transducer)(R inputRange, Transducer t) if (isInputRange
 unittest
 {
     import transduced.transducers;
+    auto res = transduceSource([1, 2, 3, 4, 5], chunkMapper!((scope int[] view) => view.dup)(3)).array();
+    assert(res == [[1,2,3], [4, 5]]);
+}
+
+///
+unittest
+{
+    import transduced.transducers;
 
     auto res = transduceSource([1, 2, 3, 4], comp(taker(2), mapper!minus, mapper!twice));
     assert(!res.empty);
@@ -61,11 +69,11 @@ private struct TransducedSource(Range, Putter, ElementType) if (isInputRange!Ran
     {
         assert(buffer.empty());
 
-        while (!_input.empty() && _putter.isAcceptingInput())
+        while (!_input.empty() && !_putter.isDone())
         {
             _putter.put(_input.front());
             _input.popFront();
-            if (_input.empty() || !_putter.isAcceptingInput())
+            if (_input.empty() || _putter.isDone())
             {
                 // last step call
                 _putter.flush();
@@ -140,7 +148,7 @@ auto into(R, Transducer, Out)(R from, Transducer t, Out to) if (
     foreach (el; from)
     {
         transducerStack.put(el);
-        if (!transducerStack.isAcceptingInput())
+        if (transducerStack.isDone())
             break;
     }
     transducerStack.flush();
@@ -169,14 +177,14 @@ public struct TransducedSink(Putter)
         _putter = own(putter);
     }
 
-    public bool isAcceptingInput() @property
+    public bool isDone() @property
     {
-        return _putter.isAcceptingInput();
+        return _putter.isDone();
     }
 
     public void put(InputType input)
     {
-        if (_putter.isAcceptingInput())
+        if (!_putter.isDone())
             _putter.put(input);
     }
 
@@ -189,7 +197,7 @@ public struct TransducedSink(Putter)
 /++
 Returns an ExtendedOutputRange (see $(D transduced.core.isExtendedOutputRange)) of type $(D TransducedSink) which forwards input transformed by transducer $(D t) to OutputRange $(D o). $(D o) has to take $(D OutElementType) as input.
 +/
-auto transduceSink(InputElementType, Transducer, OutputRange)(Transducer t, OutputRange o) if (isTransducer!(Transducer, Transducer.OutputType!InputElementType) 
+auto transduceSink(InputElementType, Transducer, OutputRange)(Transducer t, OutputRange o)if (isTransducer!(Transducer, InputElementType) 
                                                                                                && isOutputRange!(OutputRange, Transducer.OutputType!InputElementType))
 {
     alias OutElementType = Transducer.OutputType!(InputElementType);
@@ -203,9 +211,29 @@ unittest
 {
     import std.array;
     import transduced.transducers;
+    auto output = appender!(int[][])();
+    auto transducedOutput = transduceSink!int(chunkMapper!((scope int[] view) => view.dup)(3), output);
+    put(transducedOutput, 1);
+    assert(output.data == []);
+    put(transducedOutput, 2);
+    put(transducedOutput, 3);
+    assert(output.data == [[1, 2, 3]]);
+    put(transducedOutput, 4);
+    put(transducedOutput, 5);
+    assert(output.data == [[1, 2, 3]]);
+    // flushing is optional, skipping it will just ignore the buffered data on destruction, can also flush multiple times.
+    transducedOutput.flush();
+    assert(output.data == [[1, 2, 3], [4,5]]);
+}
+
+///
+unittest
+{
+    import std.array;
+    import transduced.transducers;
 
     auto output = appender!(int[])();
-    auto transducedOutput = transduceSink!int(mapper!((int x) => -x), output);
+    auto transducedOutput = transduceSink!int(mapper!(( x) => -x), output);
     static assert(isOutputRange!(typeof(transducedOutput), int));
     static assert(isExtendedOutputRange!(typeof(transducedOutput), int));
     put(transducedOutput, 1);
@@ -214,7 +242,7 @@ unittest
     assert(output.data == [-1, -2]);
     put(transducedOutput, 3);
     assert(output.data == [-1, -2, -3]);
-    assert(transducedOutput.isAcceptingInput());
+    assert(!transducedOutput.isDone());
 }
 
 ///
@@ -226,11 +254,11 @@ unittest
     auto output = appender!(int[])();
     auto transducedOutput = transduceSink!int(taker(2), output);
     put(transducedOutput, 1);
-    assert(transducedOutput.isAcceptingInput());
+    assert(!transducedOutput.isDone());
     assert(output.data == [1]);
     put(transducedOutput, 2);
     assert(output.data == [1, 2]);
     put(transducedOutput, 3);
     assert(output.data == [1, 2]);
-    assert(!transducedOutput.isAcceptingInput());
+    assert(transducedOutput.isDone());
 }

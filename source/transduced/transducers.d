@@ -86,8 +86,6 @@ private:
 }
 
 // transducer with early termination
-// when transducer stack has !isAcceptingInput flag no more input should be supplied to the Putter stack using Putter.put method
-// buffered transducer can still call put method in flush() to putter input buffered earlier
 /++
 Returns a transducer modifying the putter by using only first $(D howMany) inputs.
 +/
@@ -145,6 +143,7 @@ private struct Taker(F)
         {
             mixin PutterDecoratorMixin!(Decorated, InType);
             private F f;
+            private bool _done;
             private this(Decorated putter, F f)
             {
                 this.f = own(f);
@@ -153,14 +152,22 @@ private struct Taker(F)
 
             void put(InputType elem)
             {
+                if (isDone())
+                    return;
+
                 if (f(elem))
                 {
                     putter.put(elem);
                 }
                 else
                 {
-                    putter.markNotAcceptingInput();
+                    _done = true;
                 }
+            }
+
+            bool isDone()
+            {
+                return _done;
             }
         }
 
@@ -361,6 +368,8 @@ private struct Flattener
             {
                 foreach (e; elem)
                 {
+                    if (putter.isDone())
+                        break;
                     putter.put(e);
                 }
             }
@@ -447,10 +456,11 @@ private struct Buffer
 
             void flush()
             {
-                while (!buffer.empty())
+                while (!buffer.empty() && !putter.isDone())
                 {
                     putter.put(buffer.removeFront());
                 }
+                putter.flush();
             }
         }
 
@@ -688,10 +698,11 @@ private struct ChunkMapper(F)
                     putter.put(f(buffer.data));
                     buffer.clear();
                 }
+                putter.flush();
             }
         }
 
-        alias BufferElementType = ElementType!(Parameters!(f)[0]);
+        alias BufferElementType = InType;
 
         return PutterDecorator!(typeof(putterBuffer!(BufferElementType)()))(own(putter),
             putterBuffer!(BufferElementType)(chunkSize), own(f));
@@ -815,5 +826,35 @@ version (unittest)
         auto res = transduceSource([1, 2, 3, 4], flatMapper((int x) => [a,
             a])).array();
         assert(res == [2, 2, 2, 2, 2, 2, 2, 2]);
+    }
+
+    unittest
+    {
+        auto res = transduceSource([[1, 2, 3, 4]], comp(flattener(), taker(2))).array();
+        assert(res == [1, 2]);
+    }
+
+    unittest
+    {
+        auto res = transduceSource([[1, 2, 3, 4]], comp(flattener(), taker(2), mapper!((x) =>[x,x]))).array();
+        assert(res == [[1, 1], [2,2]]);
+    }
+
+    unittest
+    {
+        auto res = transduceSource([[1, 2, 3, 4]], comp(flattener(), taker(2), mapper!((x) =>[x,x]), flattener())).array();
+        assert(res == [1, 1, 2,2]);
+    }
+
+    unittest
+    {
+        auto res = transduceSource([[1, 2, 3, 4]], comp(flattener(), taker(2), mapper!((x) =>[x,x]), flattener(), taker(1))).array();
+        assert(res == [1]);
+    }
+
+    unittest
+    {
+        auto res = transduceSource([1, 2, 3, 4, 5, 6, 7], comp(taker(2), chunkMapper!((x) =>x.dup)(5), flattener())).array();
+        assert(res == [1, 2]);
     }
 }

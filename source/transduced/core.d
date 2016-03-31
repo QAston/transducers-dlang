@@ -6,10 +6,9 @@ module transduced.core;
 import std.range;
 import std.array;
 import transduced.util;
-import std.traits : hasMember;
 
 /++
-An extended output range is a $(D std.range.OutputRange) with 2 additional capabilities: early termination using $(D O.isAcceptingInput()) and buffering using $(D O.flush()) which flushes the range buffer.
+An extended output range is a $(D std.range.OutputRange) with 2 additional capabilities: early termination using $(D O.isDone()) and buffering using $(D O.flush()) which flushes the range buffer.
 
 All extended output ranges are also regular output ranges.
 All $(D Putter)s are also extended output ranges.
@@ -17,23 +16,13 @@ All $(D Putter)s are also extended output ranges.
 enum isExtendedOutputRange(O, ElementType) = isOutputRange!(O,ElementType) && is(typeof((inout int = 0)
                                                                                        {
                                                                                            O o = O.init;
-                                                                                           bool a = o.isAcceptingInput();
+                                                                                           bool a = o.isDone();
                                                                                            o.flush();
                                                                                        }));
 
 ///
 unittest {
     static assert (isExtendedOutputRange!(Putter!(int, int[]), int));
-}
-
-private template baseInputType(P)
-{
-    static if (hasMember!(P, "decorated")) {
-        alias baseInputType = baseInputType!(typeof(P.decorated));
-    }
-    else {
-        alias baseInputType = P.InputType;
-    }
 }
 
 
@@ -46,8 +35,7 @@ Every putter is also $(D isExtendedOutputRange).
 enum isPutter(P) = isExtendedOutputRange!(P,P.InputType) && is(typeof((inout int = 0)
                                                                       {
                                                                           P p = P.init;
-                                                                          p.markNotAcceptingInput();
-                                                                          std.range.put(p.to(), (baseInputType!P).init);
+                                                                          std.range.put(p.to(), P.TargetType.init);
                                                                       }));
 
 ///
@@ -91,7 +79,8 @@ unittest{
 /++
 Mixin used to implement common code for all putter decorators.
 
-Specific putter decorators provide additional capabilities to $(D Putter) by wrapping it and forwarding calls to the $(D Decorated) $(D putter) object.
+Specific putter decorators provide additional capabilities to $(D Putter) by wrapping it and forwarding calls to the $(D Decorated) $(D putter) object. $(D InType) - type for this decorator to take in $(D PutterDecorator.put).
+
 For more information on how decorators work google "Decorator design pattern".
 +/
 mixin template PutterDecoratorMixin(Decorated, InType)
@@ -99,21 +88,16 @@ mixin template PutterDecoratorMixin(Decorated, InType)
     private Decorated putter;
 
     /++
-    Forwards to the $(D Decorated) $(D Putter.isAcceptingInput). Do not override.
+    PutterDecorators which do early termination need to override this method. By default forwards to the $(D Decorated) $(D Putter.isDone).
+
+    For an example of overriding this method see $(D transduced.transducers.Taker).
     +/
-    pragma(inline, true) bool isAcceptingInput()
+    pragma(inline, true) bool isDone()
     {
-        return putter.isAcceptingInput();
+        return putter.isDone();
     }
     /++
-    Forwards to the $(D Decorated) $(D Putter.markNotAcceptingInput). Do not override.
-    +/
-    pragma(inline, true) void markNotAcceptingInput()
-    {
-        putter.markNotAcceptingInput();
-    }
-    /++
-    PutterDecorators which do buffering need to override this method. By default forwards to the $(D Decorated) $(Putter.flush).
+    PutterDecorators which do buffering need to override this method. By default forwards to the $(D Decorated) $(D Putter.flush).
 
     This method should $(D Putter.put) any buffered data into the $(D Decorated) $(D putter).
     After all processing is done the decorator should forward to the $(D Decorated) $(D Putter.flush).
@@ -132,7 +116,12 @@ mixin template PutterDecoratorMixin(Decorated, InType)
     }
 
     /++
-    Type of input taken by $(D Putter.put).
+    Type taken by wrapped output range. Do not override.
+    +/
+    alias TargetType = Decorated.TargetType;
+
+    /++
+    Type of input taken by $(D Putter.put). Do not override.
     +/
     alias InputType = InType;
 }
@@ -143,23 +132,25 @@ Wraps an $(D OutputRange) + $(D std.range.put) function in a struct providing ea
 public struct Putter(ElementType, OutputRange) if (isOutputRange!(OutputRange, ElementType))
 {
     private OutputRange _to;
-    private bool _acceptingInput;
     this(OutputRange to)
     {
-        this._acceptingInput = true;
         this._to = own(to);
     }
 
     /++
     Type taken in $(D put).
     +/
-
     alias InputType = ElementType;
 
     /++
-    Put the given $(D input) into the $(D Putter.to) output range.
+    Type taken by wrapped $(D OutputRange).
+    +/
+    alias TargetType = InputType;
+
+    /++
+    Put the given $(D input) into the $(D Putter.to) output.
     
-    Advances the process represented by an output range by a single step.
+    A single step in a sequential process implemented using transducers.
     +/
     void put(InputType input)
     {
@@ -167,36 +158,26 @@ public struct Putter(ElementType, OutputRange) if (isOutputRange!(OutputRange, E
     }
 
     /++
-    Returns true when putter is no longer accepting input.
+    Early termination. Returns true when there's a guarantee that this $(D Putter) won't $(D std.range.put) new data to $(D PutterDecorator.to) for any future $(D Putter.put) calls, so they can be skipped.
 
-    Code using putters should check this after every step, and if false stop calling $(D Putter.put), call $(D Putter.flush) and finish.
-    Returns false if isExtendedOutputRange(OutputRange) and wrapped output range doesn't accept input anymore.
+    This check can be used for performance (in loops - to reduce calls which won't result in any output) and to provide early termination semantics (i.e. when working with infinite ranges).
+
+    By default always returns false. If the wrapped $(D OutputRange) is an $(D ExtendedOutputRange), forwards call to $(D ExtendedOutputRange.isDone).
     +/
-    bool isAcceptingInput()
+    bool isDone()
     {
         static if (isExtendedOutputRange!(OutputRange, InputType)) {
-            if (!_to.isAcceptingInput())
-                return false;
+            return _to.isDone();
         }
-        return _acceptingInput;
+        return false;
     }
 
     /++
-    Mark putter to not accept input anymore.
+    Flushes any input buffered so far by PutterDecorators using $(D Putter.put). Can be called multiple times, or even not called at all.
 
-    Use inside $(D PutterDecorator.put) method to signal that this putter won't accept any more external input.
-    When marked, no new input can be fed to the process using $(D Putter.put), outside of $(D Putter.flush) method.
-    +/
-    void markNotAcceptingInput()
-    {
-        _acceptingInput = false;
-    }
+    Usually called when finished $(D Putter.put)ting.
 
-    /++
-    Flushes any input buffered so far by PutterDecorators using $(D Putter.put).
-
-    Called when finished $(D Putter.put)ting.
-    If the wrapped OutputRange is an extended OutputRange, forward call to flush of that range.
+    If the wrapped $(D OutputRange) is an $(D ExtendedOutputRange), forwards call to $(D ExtendedOutputRange.flush).
     +/
     void flush()
     {
