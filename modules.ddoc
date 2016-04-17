@@ -1,6 +1,6 @@
 MODULES =
 	$(MODULE transduced.package) 
-	$(MODULE transduced.contexts)
+	$(MODULE transduced.range)
 	$(MODULE transduced.core)
 	$(MODULE transduced.transducers)
 	$(MODULE transduced.util)
