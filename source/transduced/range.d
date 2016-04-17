@@ -13,11 +13,11 @@ import transduced.core;
 /++
 Returns a lazy range, each item is taken from given $(D inputRange) and lazily transformed by provided transducer $(D t).
 +/
-auto transduceSource(R, Transducer)(R inputRange, Transducer t) if (isInputRange!R && isTransducer!(Transducer, ElementType!R))
+auto transduceSource(R, Transducer)(R inputRange, Transducer t) if (
+        isInputRange!R && isTransducer!(Transducer, ElementType!R))
 {
     alias InElementType = ElementType!(R);
     alias OutElementType = Transducer.OutputType!(InElementType);
-
 
     alias bufferType = typeof(putterBuffer!OutElementType());
     alias putterType = typeof(t.wrap!InElementType(Putter!(OutElementType,
@@ -30,8 +30,9 @@ auto transduceSource(R, Transducer)(R inputRange, Transducer t) if (isInputRange
 unittest
 {
     import transduced.transducers;
+
     auto res = transduceSource([1, 2, 3, 4, 5], chunkMapper!((scope int[] view) => view.dup)(3)).array();
-    assert(res == [[1,2,3], [4, 5]]);
+    assert(res == [[1, 2, 3], [4, 5]]);
 }
 
 ///
@@ -138,8 +139,8 @@ private struct TransducedSource(Range, Putter, ElementType) if (isInputRange!Ran
 /++
 Populates output range $(D to) with contents of input range $(D from) transformed by transducer $(D t).
 +/
-auto into(R, Transducer, Out)(R from, Transducer t, Out to) if (
-        isInputRange!R && isTransducer!(Transducer, ElementType!R))
+auto into(R, Transducer, Out)(R from, Transducer t, Out to) if (isInputRange!R
+        && isTransducer!(Transducer, ElementType!R))
 {
     alias InElementType = ElementType!(R);
     alias OutElementType = Transducer.OutputType!(InElementType);
@@ -197,13 +198,15 @@ public struct TransducedSink(Putter)
 /++
 Returns an ExtendedOutputRange (see $(D transduced.core.isExtendedOutputRange)) of type $(D TransducedSink) which forwards input transformed by transducer $(D t) to OutputRange $(D o). $(D o) has to take $(D OutElementType) as input.
 +/
-auto transduceSink(InputElementType, Transducer, OutputRange)(Transducer t, OutputRange o)if (isTransducer!(Transducer, InputElementType) 
-                                                                                               && isOutputRange!(OutputRange, Transducer.OutputType!InputElementType))
+auto transduceSink(InputElementType, Transducer, OutputRange)(Transducer t, OutputRange o) if (
+        isTransducer!(Transducer, InputElementType)
+        && isOutputRange!(OutputRange, Transducer.OutputType!InputElementType))
 {
     alias OutElementType = Transducer.OutputType!(InputElementType);
 
     alias putterType = typeof(t.wrap!InputElementType(Putter!(OutElementType, OutputRange)(o)));
-    return TransducedSink!(putterType)(t.wrap!InputElementType(Putter!(OutElementType, OutputRange)(o)));
+    return TransducedSink!(putterType)(
+        t.wrap!InputElementType(Putter!(OutElementType, OutputRange)(o)));
 }
 
 ///
@@ -211,8 +214,10 @@ unittest
 {
     import std.array;
     import transduced.transducers;
+
     auto output = appender!(int[][])();
-    auto transducedOutput = transduceSink!int(chunkMapper!((scope int[] view) => view.dup)(3), output);
+    auto transducedOutput = transduceSink!int(chunkMapper!((scope int[] view) => view.dup)(3),
+        output);
     put(transducedOutput, 1);
     assert(output.data == []);
     put(transducedOutput, 2);
@@ -223,7 +228,7 @@ unittest
     assert(output.data == [[1, 2, 3]]);
     // flushing is optional, skipping it will just ignore the buffered data on destruction, can also flush multiple times.
     transducedOutput.flush();
-    assert(output.data == [[1, 2, 3], [4,5]]);
+    assert(output.data == [[1, 2, 3], [4, 5]]);
 }
 
 ///
@@ -233,7 +238,7 @@ unittest
     import transduced.transducers;
 
     auto output = appender!(int[])();
-    auto transducedOutput = transduceSink!int(mapper!(( x) => -x), output);
+    auto transducedOutput = transduceSink!int(mapper!((x) => -x), output);
     static assert(isOutputRange!(typeof(transducedOutput), int));
     static assert(isExtendedOutputRange!(typeof(transducedOutput), int));
     put(transducedOutput, 1);

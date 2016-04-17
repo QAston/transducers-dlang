@@ -13,18 +13,14 @@ An extended output range is a $(D std.range.OutputRange) with 2 additional capab
 All extended output ranges are also regular output ranges.
 All $(D Putter)s are also extended output ranges.
 +/
-enum isExtendedOutputRange(O, ElementType) = isOutputRange!(O,ElementType) && is(typeof((inout int = 0)
-                                                                                       {
-                                                                                           O o = O.init;
-                                                                                           bool a = o.isDone();
-                                                                                           o.flush();
-                                                                                       }));
+enum isExtendedOutputRange(O, ElementType) = isOutputRange!(O, ElementType)
+        && is(typeof((inout int = 0) { O o = O.init; bool a = o.isDone(); o.flush();  }));
 
 ///
-unittest {
-    static assert (isExtendedOutputRange!(Putter!(int, int[]), int));
+unittest
+{
+    static assert(isExtendedOutputRange!(Putter!(int, int[]), int));
 }
-
 
 /++
 Is true when P is a type providing $(D transduced.core.Putter) methods.
@@ -32,15 +28,15 @@ Is true when P is a type providing $(D transduced.core.Putter) methods.
 All DecoratedPutters must pass this check too.
 Every putter is also $(D isExtendedOutputRange).
 +/
-enum isPutter(P) = isExtendedOutputRange!(P,P.InputType) && is(typeof((inout int = 0)
-                                                                      {
-                                                                          P p = P.init;
-                                                                          std.range.put(p.to(), P.TargetType.init);
-                                                                      }));
+enum isPutter(P) = isExtendedOutputRange!(P, P.InputType) && is(typeof((inout int = 0) {
+    P p = P.init;
+    std.range.put(p.to(), P.TargetType.init);
+}));
 
 ///
-unittest {
-    static assert (isPutter!(Putter!(int, int[])));
+unittest
+{
+    static assert(isPutter!(Putter!(int, int[])));
 }
 /++
 Is true when $(D T) is a transducer type which can process $(D InputType) input.
@@ -48,32 +44,41 @@ Is true when $(D T) is a transducer type which can process $(D InputType) input.
 Transducer is an object with $(D wrap!InputType) method taking a (possibly already $(D Decorated)) $(D Putter) object to decorate and returning a DecoratedPutter ($(D Putter) wrapped in $(PutterDecorator) instance). The returned DecoratedPutter accepts $(D InputType) input.
 Transducer also has OutputType(InputType) alias which defines what type will be passed to DecoratedPutter on given input.
 +/
-enum isTransducer(T, InputType) = is(typeof((inout int = 0)
-                                 {
-                                     alias OutputType = T.OutputType!(InputType);
-                                     auto decorated = T.init.wrap!InputType(Putter!(OutputType, void delegate(OutputType)).init);
-                                     static assert(isPutter!(typeof(decorated)));
-                                 }));
+enum isTransducer(T, InputType) = is(typeof((inout int = 0) {
+    alias OutputType = T.OutputType!(InputType);
+    auto decorated = T.init.wrap!InputType(Putter!(OutputType, void delegate(OutputType)).init);
+    static assert(isPutter!(typeof(decorated)));
+}));
 
 ///
-unittest{
+unittest
+{
     // a dummy transducer object
-    struct Tducer{
-        auto wrap(InType, Decorated)(Decorated putter) if (isPutter!Decorated) {
-            struct PutterDecorator {
+    struct Tducer
+    {
+        auto wrap(InType, Decorated)(Decorated putter) if (isPutter!Decorated)
+        {
+            struct PutterDecorator
+            {
                 mixin PutterDecoratorMixin!(Decorated, InType);
-                this(Decorated putter) {
+                this(Decorated putter)
+                {
                     this.putter = putter;
                 }
-                void put(InputType p) {
+
+                void put(InputType p)
+                {
                     std.range.put(putter, p);
                 }
             }
+
             return PutterDecorator(putter);
         }
+
         alias OutputType(InputType) = InputType;
     }
-    static assert (isTransducer!(Tducer, int));
+
+    static assert(isTransducer!(Tducer, int));
 }
 
 /++
@@ -166,7 +171,8 @@ public struct Putter(ElementType, OutputRange) if (isOutputRange!(OutputRange, E
     +/
     bool isDone()
     {
-        static if (isExtendedOutputRange!(OutputRange, InputType)) {
+        static if (isExtendedOutputRange!(OutputRange, InputType))
+        {
             return _to.isDone();
         }
         return false;
@@ -181,7 +187,8 @@ public struct Putter(ElementType, OutputRange) if (isOutputRange!(OutputRange, E
     +/
     void flush()
     {
-        static if (isExtendedOutputRange!(OutputRange, InputType)) {
+        static if (isExtendedOutputRange!(OutputRange, InputType))
+        {
             _to.flush();
         }
     }

@@ -67,6 +67,7 @@ private struct Mapper(F)
 
         return PutterDecorator(own(putter), own(f));
     }
+
     alias OutputType(InputType) = typeof(f(InputType.init));
 }
 
@@ -173,6 +174,7 @@ private struct Taker(F)
 
         return PutterDecorator(own(putter), own(f));
     }
+
     alias OutputType(InputType) = InputType;
 }
 
@@ -271,6 +273,7 @@ private struct Dropper(F)
 
         return PutterDecorator(own(putter), own(f));
     }
+
     alias OutputType(InputType) = InputType;
 }
 
@@ -329,6 +332,7 @@ private struct Filterer(F)
 
         return PutterDecorator(own(putter), own(f));
     }
+
     alias OutputType(InputType) = InputType;
 }
 
@@ -377,8 +381,9 @@ private struct Flattener
 
         return PutterDecorator(own(putter));
     }
+
     alias OutputType(InputType) = ElementType!(InputType);
-    
+
 }
 
 /++
@@ -467,6 +472,7 @@ private struct Buffer
         return PutterDecorator!(typeof(putterBuffer!(Decorated.InputType)()))(
             own(putter), putterBuffer!(Decorated.InputType)());
     }
+
     alias OutputType(InputType) = InputType;
 }
 
@@ -609,6 +615,7 @@ private struct Doer(F)
 
         return PutterDecorator(own(putter), own(f));
     }
+
     alias OutputType(InputType) = InputType;
 }
 
@@ -639,8 +646,8 @@ unittest
     auto output = appender!(int[][])();
     // the chunkView.dup is REQUIRED here because the reference to it is returned from the function
     // you can use any other method to allocate an array to return
-    [1, 2, 3, 4, 5, 6, 7].into(
-        chunkMapper!((scope int[] chunkView) => chunkView.dup)(3), output);
+    [1, 2, 3, 4, 5, 6, 7].into(chunkMapper!((scope int[] chunkView) => chunkView.dup)(3),
+        output);
     assert(output.data == [[1, 2, 3], [4, 5, 6], [7]]);
 }
 
@@ -651,8 +658,8 @@ unittest
     import transduced.range;
 
     auto output = appender!(int[])();
-    [1, 2, 3, 4, 5, 6, 7].into(
-        chunkMapper!((scope int[] chunkView) => chunkView[0])(3), output);
+    [1, 2, 3, 4, 5, 6, 7].into(chunkMapper!((scope int[] chunkView) => chunkView[0])(3),
+        output);
     assert(output.data == [1, 4, 7]);
 }
 
@@ -707,6 +714,7 @@ private struct ChunkMapper(F)
         return PutterDecorator!(typeof(putterBuffer!(BufferElementType)()))(own(putter),
             putterBuffer!(BufferElementType)(chunkSize), own(f));
     }
+
     alias OutputType(InputType) = typeof(f([InputType.init]));
 }
 
@@ -760,8 +768,7 @@ version (unittest)
 
     unittest
     {
-        auto res = transduceSource([1, 2, 3, 4], comp(taker(2),
-            mapper!minus, mapper!twice)).array();
+        auto res = transduceSource([1, 2, 3, 4], comp(taker(2), mapper!minus, mapper!twice)).array();
         assert(res == [-2, -4]);
     }
 
@@ -823,8 +830,7 @@ version (unittest)
     {
         auto dupper = Dup!int(2);
         int a = 2;
-        auto res = transduceSource([1, 2, 3, 4], flatMapper((int x) => [a,
-            a])).array();
+        auto res = transduceSource([1, 2, 3, 4], flatMapper((int x) => [a, a])).array();
         assert(res == [2, 2, 2, 2, 2, 2, 2, 2]);
     }
 
@@ -836,25 +842,29 @@ version (unittest)
 
     unittest
     {
-        auto res = transduceSource([[1, 2, 3, 4]], comp(flattener(), taker(2), mapper!((x) =>[x,x]))).array();
-        assert(res == [[1, 1], [2,2]]);
+        auto res = transduceSource([[1, 2, 3, 4]], comp(flattener(), taker(2),
+            mapper!((x) => [x, x]))).array();
+        assert(res == [[1, 1], [2, 2]]);
     }
 
     unittest
     {
-        auto res = transduceSource([[1, 2, 3, 4]], comp(flattener(), taker(2), mapper!((x) =>[x,x]), flattener())).array();
-        assert(res == [1, 1, 2,2]);
+        auto res = transduceSource([[1, 2, 3, 4]], comp(flattener(), taker(2),
+            mapper!((x) => [x, x]), flattener())).array();
+        assert(res == [1, 1, 2, 2]);
     }
 
     unittest
     {
-        auto res = transduceSource([[1, 2, 3, 4]], comp(flattener(), taker(2), mapper!((x) =>[x,x]), flattener(), taker(1))).array();
+        auto res = transduceSource([[1, 2, 3, 4]], comp(flattener(), taker(2),
+            mapper!((x) => [x, x]), flattener(), taker(1))).array();
         assert(res == [1]);
     }
 
     unittest
     {
-        auto res = transduceSource([1, 2, 3, 4, 5, 6, 7], comp(taker(2), chunkMapper!((x) =>x.dup)(5), flattener())).array();
+        auto res = transduceSource([1, 2, 3, 4, 5, 6, 7], comp(taker(2),
+            chunkMapper!((x) => x.dup)(5), flattener())).array();
         assert(res == [1, 2]);
     }
 }
